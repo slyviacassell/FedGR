@@ -66,14 +66,14 @@ def read_fednll_args():
     parser.add_argument(
         "--use_cs", action="store_true", help="Whether to use CS model."
     )
+    parser.add_argument(
+        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean"], default="loss"
+    )
+    parser.add_argument(
+        "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
+    )
     
     # todo
-    parser.add_argument(
-        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["sc", "loss", "scl", "loss_mean", "loss_ema"], default="loss"
-    )
-    parser.add_argument(
-        "--metric_model", type=str, choices=["global", "local_ema", "local"], default="local_ema", help="Which model to use for metric evluation."
-    )
     parser.add_argument(
         "--metric_ema_gamma", type=float, default=0.7, help="The gamma for sample ema metric."
     )

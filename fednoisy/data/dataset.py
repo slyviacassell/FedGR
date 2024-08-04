@@ -22,7 +22,7 @@ from fedlab.utils.logger import Logger
 
 from fednoisy.data.NLLData import functional as nllF
 
-from fednoisy.data.NLLData.functional import NoisyDataset, GuidMaskRandomSampler
+from fednoisy.data.NLLData.functional import NoisyDataset
 from fednoisy.data import TRAIN_TRANSFORM_STRONG, TEST_TRANSFORM
 from fednoisy.data import (
     CLASS_NUM,
