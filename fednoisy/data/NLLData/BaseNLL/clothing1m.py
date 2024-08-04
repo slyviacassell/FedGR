@@ -74,6 +74,7 @@ class NLLClothing1M(NLLBase):
 
         self.test_labels = test_labels
         self.test_data = test_data
+        self.test_guids = np.array([i for i in range(len(self.test_data))]) # dataset cartography
         print(f"{self.dataset_name} testset is loaded.")
         if save is True:
             self.save_testset()
@@ -112,6 +113,7 @@ class NLLClothing1M(NLLBase):
 
         self.total_train_data = total_train_data
         self.total_train_labels = total_train_labels
+        self.train_guids = np.array([i for i in range(len(self.total_train_data))]) # dataset cartography
         print(f"{self.dataset_name} trainset is loaded.")
         if save is True:
             self.save_trainset()

@@ -31,6 +31,16 @@ def read_fednll_args():
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--weight_decay", type=float, default=1e-3)
     parser.add_argument("--momentum", type=float, default=0.9)
+    
+    # ----Wandb args----
+    parser.add_argument("--use_wandb",action="store_true")
+    parser.add_argument("--wandb_project_name",type=str,default="fednoisy")
+
+    # ----LR Scheduler args----
+    parser.add_argument("--lr_scheduler",type=str,default="none")
+    parser.add_argument("--step_size",type=int, default=20)
+    parser.add_argument("--step_gamma",type=float, default=0.1)
+    parser.add_argument("--multistep_milestone",nargs="+",help="step milestone for multistep lr scheduler")
 
     # ==== FedNLL data args ====
     parser.add_argument(
@@ -151,11 +161,50 @@ def read_fednll_args():
         help="gamma parameter for Focal loss and Normalzied Focal loss.",
     )
 
+    #==== APL losses ====
+    parser.add_argument(
+        "--apl_alpha",
+        type=float,
+        default=1.0,
+        help="alpha parameter for APL losses"
+    )
+    parser.add_argument(
+        "--apl_beta",
+        type=float,
+        default=1.0,
+        help="beta parameter for APL losses"
+    )
+    #--------------------
+
     # ----Mixup options----
     parser.add_argument("--mixup", action="store_true", help="Whether to use mixup.")
     parser.add_argument(
         "--mixup_alpha", type=float, default=1.0, help="Hyperparameter alpha for mixup."
     )
+
+    # ----DivideMix options----
+    parser.add_argument(
+        "--dividemix", action="store_true",
+    )
+    parser.add_argument(
+        "--dividemix_warmup_round", type=int, help="The warmup round for dividemix."
+    )
+    parser.add_argument(
+        "--dividemix_temperature", type=float, default=0.5, help="The temperature for softmax sharping"
+    )
+    parser.add_argument(
+        "--dividemix_mixup_alpha", type=float, default=4, help="The alpha of beta distribution in mixup"
+    )
+    parser.add_argument(
+        "--gmm_threshold", type=float, default=0.5, help="The threshold for GMM"
+    )
+    parser.add_argument(
+        "--dividemix_lambda_u", type=float, default=25, help="Weight for unsupervised loss"
+    )
+    parser.add_argument(
+        "--disable_asym_penalty", action="store_true", help="Whether to disable the penalty for asymmetric noise"
+    )
+    
 
     # ----Co-teaching options----
     parser.add_argument(

@@ -46,6 +46,9 @@ class FedNLLScene(NLLBase):
         max_noise_ratio: float = 1.0,
         min_require_size: Optional[int] = 10,
         partitioner: Optional[DataPartitioner] = VisionPartitioner,
+        local_noise_mode: str = "uniform",
+        noise_ratio_mu: float = 0.0,
+        noise_ratio_sigma: float = 0.0,
     ) -> None:
         NLLBase.__init__(self, root_dir, noise_mode, out_dir)
 
@@ -85,10 +88,25 @@ class FedNLLScene(NLLBase):
                 noise_mode, noise_ratio
             )  # check validation of noise setting
             self.noise_ratio = {cid: noise_ratio for cid in range(num_clients)}
+            self.local_noise_mode = None # used for local label noise
         else:
-            self.noise_ratio = {cid: 0.0 for cid in range(num_clients)}  # initial value
-            self.min_noise_ratio = min_noise_ratio
-            self.max_noise_ratio = max_noise_ratio
+            self.local_noise_mode = local_noise_mode
+            if local_noise_mode == "uniform":
+                self.noise_ratio = {cid: 0.0 for cid in range(num_clients)}  # initial value
+                self.min_noise_ratio = min_noise_ratio
+                self.max_noise_ratio = max_noise_ratio
+            elif local_noise_mode == "gaussian":
+                self.noise_ratio = {
+                    cid: np.random.normal(noise_ratio_mu, noise_ratio_sigma)
+                    for cid in range(num_clients)
+                }
+                self.noise_ratio_mu = noise_ratio_mu
+                self.noise_ratio_sigma = noise_ratio_sigma
+            else:
+                raise ValueError(
+                    f"Local noise mode only supports 'uniform' and 'gaussian'. "
+                    f"{local_noise_mode} is not supported."
+                )
 
         self.globalize = globalize
         self.min_require_size = min_require_size
@@ -101,13 +119,17 @@ class FedNLLScene(NLLBase):
         self.nll_scene_filename = f"{self}_seed_{seed}_setting.pt"
         self.nll_scene_file_path = os.path.join(self.out_dir, self.nll_scene_filename)
         self.nll_scene_folder = os.path.join(self.out_dir, f"{self}_seed_{seed}")
-        client_dict = self._perform_partition()
+        client_dict = self._perform_partition() # partition with true labels
         for cid in client_dict:
             client_dict[cid] = client_dict[cid].tolist()  # change array([...]) to [...]
         self.client_dict = client_dict
         self.data_dict = F.split_data(self.client_dict, self.train_data)
-        self.labels_dict = F.split_data(client_dict, self.train_labels)
-        self.noisy_labels_dict = self._gen_noisy_labels(client_dict)
+        self.labels_dict = F.split_data(self.client_dict, self.train_labels)
+        if hasattr(self,"train_guids"): # dataset cartography
+            self.guids_dict = F.split_data(self.client_dict, self.train_guids) 
+        else:
+            self.guids_dict = None
+        self.noisy_labels_dict, self.transition_matrix_dict = self._gen_noisy_labels(client_dict)
         self.true_noise_ratio = F.cal_multiple_true_noisy_ratio(
             self.labels_dict, self.noisy_labels_dict
         )
@@ -127,6 +149,9 @@ class FedNLLScene(NLLBase):
             "true_noise_ratio": self.true_noise_ratio,
             "noise_ratio": self.noise_ratio,
             "noisy_labels": self.noisy_labels_dict,
+            "transition_matrix_dict": self.transition_matrix_dict,
+            "local_noise_mode": self.local_noise_mode,
+            "overall_noise_ratio": self.overall_noise_ratio,
         }
 
         torch.save(fednll_scene, self.nll_scene_file_path)
@@ -142,6 +167,7 @@ class FedNLLScene(NLLBase):
             client_dataset = NoisyDataset(
                 data=self.data_dict[cid],
                 labels=self.labels_dict[cid],
+                guids=self.guids_dict[cid] if self.guids_dict is not None else self.guids_dict,
                 noisy_labels=self.noisy_labels_dict[cid],
                 train=True,
                 transform=train_transform,
@@ -155,6 +181,7 @@ class FedNLLScene(NLLBase):
         test_dataset = NoisyDataset(
             data=self.test_data,
             labels=self.test_labels,
+            guids=self.test_guids,
             train=False,
             transform=test_transform,
         )
@@ -189,8 +216,13 @@ class FedNLLScene(NLLBase):
             )
             entry = torch.load(self.nll_scene_file_path)
             noisy_labels_dict = entry["noisy_labels"]
+            transition_matrix_dict = entry.get("transition_matrix_dict",{})
 
         else:
+            class_space = set(self.train_labels)
+            transition_matrix_dict = {}
+            overall_noise_cnt = 0
+
             # generate noisy file
             if self.globalize is True:
                 # globalized FedNLL
@@ -203,27 +235,49 @@ class FedNLLScene(NLLBase):
                 )
                 noisy_labels_dict = F.split_data(client_dict, noisy_labels)
 
+                transition_matrix = F.get_transition_matrix(self.train_labels, noisy_labels, class_space)
+                for cid in range(self.num_clients):
+                    transition_matrix_dict[cid] = transition_matrix
+
+                self.overall_noise_ratio = self.noise_ratio[0]
             else:
                 # localized FedNLL
                 noisy_labels_dict = dict()
-                self.noise_ratio = np.random.uniform(
-                    self.min_noise_ratio, self.max_noise_ratio, self.num_clients
-                )
+                if self.local_noise_mode == "gaussian":
+                    pass
+                elif self.local_noise_mode == "uniform":
+                    self.noise_ratio = np.random.uniform(
+                        self.min_noise_ratio, self.max_noise_ratio, self.num_clients
+                    )
                 print(f"Current noise ratios: {self.noise_ratio}")
                 for cid in range(self.num_clients):
                     cur_labels = self.labels_dict[cid]
-                    cur_noisy_labels = F.generate_local_noisy_labels(
+                    # cur_noisy_labels = F.generate_local_noisy_labels( # based on the local labels
+                    #     cur_labels,
+                    #     noise_mode=self.noise_mode,
+                    #     noise_ratio=self.noise_ratio[cid],
+                    #     transition=TRANSITION_MATRIX[self.dataset_name],
+                    #     dataset=self.dataset_name,
+                    # )
+                    cur_noisy_labels = F.generate_local_noisy_labels_class_space( # based on the global class space
                         cur_labels,
+                        class_space,
                         noise_mode=self.noise_mode,
                         noise_ratio=self.noise_ratio[cid],
                         transition=TRANSITION_MATRIX[self.dataset_name],
                         dataset=self.dataset_name,
                     )
                     noisy_labels_dict[cid] = cur_noisy_labels
+
+                    overall_noise_cnt += np.sum(np.array(cur_labels) != np.array(cur_noisy_labels))
+
+                    cur_transition_matrix = F.get_transition_matrix(cur_labels, cur_noisy_labels, class_space)
+                    transition_matrix_dict[cid] = cur_transition_matrix
+                self.overall_noise_ratio = overall_noise_cnt / len(self.train_labels)
             print(
                 f"Federated noisy label learning scene {self}_seed_{self.seed} are generated."
             )
-        return noisy_labels_dict
+        return noisy_labels_dict, transition_matrix_dict
 
     @property
     def partition_setting(self):
@@ -241,7 +295,10 @@ class FedNLLScene(NLLBase):
     @property
     def noise_setting(self):
         if self.globalize is False:
-            noise_param = f"local_{self.noise_mode}_min_{self.min_noise_ratio:.2f}_max_{self.max_noise_ratio:.2f}"
+            if self.local_noise_mode == "uniform":
+                noise_param = f"local_{self.noise_mode}_min_{self.min_noise_ratio:.2f}_max_{self.max_noise_ratio:.2f}"
+            elif self.local_noise_mode == "gaussian":
+                noise_param = f"local_{self.local_noise_mode}_{self.noise_mode}_mu_{self.noise_ratio_mu:.2f}_sigma_{self.noise_ratio_sigma:.2f}"
         else:
             noise_param = f"global_{self.noise_mode}_{self.noise_ratio[0]:.2f}"
         return noise_param

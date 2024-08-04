@@ -12,7 +12,7 @@ class VGG(nn.Module):
     VGG model
     '''
 
-    def __init__(self, features):
+    def __init__(self, features, num_classes=10):
         super(VGG, self).__init__()
         self.features = features
         self.classifier = nn.Sequential(
@@ -22,7 +22,7 @@ class VGG(nn.Module):
             nn.Dropout(),
             nn.Linear(512, 512),
             nn.ReLU(True),
-            nn.Linear(512, 10),
+            nn.Linear(512, num_classes),
         )
         # Initialize weights
         for m in self.modules():
@@ -103,41 +103,41 @@ cfg = {
 }
 
 
-def VGG11():
+def VGG11(num_classes):
     """VGG 11-layer model (configuration "A")"""
-    return VGG(make_layers(cfg['A']))
+    return VGG(make_layers(cfg['A']),num_classes)
 
 
-def VGG11_bn():
+def VGG11_bn(num_classes):
     """VGG 11-layer model (configuration "A") with batch normalization"""
-    return VGG(make_layers(cfg['A'], batch_norm=True))
+    return VGG(make_layers(cfg['A'], batch_norm=True),num_classes)
 
 
-def VGG13():
+def VGG13(num_classes):
     """VGG 13-layer model (configuration "B")"""
-    return VGG(make_layers(cfg['B']))
+    return VGG(make_layers(cfg['B']),num_classes)
 
 
-def VGG13_bn():
+def VGG13_bn(num_classes):
     """VGG 13-layer model (configuration "B") with batch normalization"""
-    return VGG(make_layers(cfg['B'], batch_norm=True))
+    return VGG(make_layers(cfg['B'], batch_norm=True),num_classes)
 
 
-def VGG16():
+def VGG16(num_classes):
     """VGG 16-layer model (configuration "D")"""
-    return VGG(make_layers(cfg['D']))
+    return VGG(make_layers(cfg['D']),num_classes)
 
 
-def VGG16_bn():
+def VGG16_bn(num_classes):
     """VGG 16-layer model (configuration "D") with batch normalization"""
-    return VGG(make_layers(cfg['D'], batch_norm=True))
+    return VGG(make_layers(cfg['D'], batch_norm=True),num_classes)
 
 
-def VGG19():
+def VGG19(num_classes):
     """VGG 19-layer model (configuration "E")"""
-    return VGG(make_layers(cfg['E']))
+    return VGG(make_layers(cfg['E']),num_classes)
 
 
-def VGG19_bn():
+def VGG19_bn(num_classes):
     """VGG 19-layer model (configuration 'E') with batch normalization"""
-    return VGG(make_layers(cfg['E'], batch_norm=True))
+    return VGG(make_layers(cfg['E'], batch_norm=True),num_classes)

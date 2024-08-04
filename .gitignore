@@ -145,3 +145,10 @@ tests/data/*
 !tests/data/rawdata/
 tests/data/rawdata/*
 !tests/data/rawdata/.gitkeep
+
+wandb/
+helper.txt
+datamap-*/
+*-line*/
+*tmp/
+fednoisy/algorithms/centr/logs*

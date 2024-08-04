@@ -4,11 +4,15 @@ import os
 import random
 import numpy as np
 
+from typing import List
+from copy import deepcopy
+
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 import torchvision
 from torchvision import transforms
+import torch.nn.functional as TF
 
 from fedlab.core.server.manager import SynchronousServerManager
 
@@ -29,10 +33,11 @@ from fednoisy.data import (
 
 from fednoisy.utils.misc import AverageMeter
 from fednoisy.utils import misc as misc
+from fednoisy.utils.wandb_logger import WandbLogger
 
 
 class FedAvgServerHandler(SyncServerHandler):
-    def __init__(
+    def __init__( 
         self,
         model: torch.nn.Module,
         global_round: int,
@@ -41,6 +46,7 @@ class FedAvgServerHandler(SyncServerHandler):
         cuda: bool = True,
         device: str = None,
         logger: Logger = None,
+        wandb_logger: WandbLogger=None,
         args=None,
     ):
         SyncServerHandler.__init__(
@@ -48,6 +54,7 @@ class FedAvgServerHandler(SyncServerHandler):
         )
         self.nll_name = nll_name
         self.args = args
+        self.wandb_logger = wandb_logger
 
     @property
     def model_parameters(self) -> torch.Tensor:

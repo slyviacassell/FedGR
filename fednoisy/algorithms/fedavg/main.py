@@ -28,6 +28,7 @@ from fednoisy.algorithms.fedavg.client import (
     FedNLLFedAvgMixupClientTrainer,
     FedNLLFedAvgCoteachingClientTrainer,
     FedNLLFedAvgDynamicBootstrappingClientTrainer,
+    FedNLLFedAvgDivideMixClientTrainer,
 )
 from fednoisy.algorithms.fedavg.server import FedAvgServerHandler
 
@@ -40,9 +41,10 @@ from fednoisy.utils.misc import (
     make_exp_name,
     result_parser,
     make_alg_name,
+    now,
 )
-from fednoisy.models.build_model import build_model, build_multi_model
-
+from fednoisy.models.build_model import build_model, build_multi_model, build_volmin_model
+from fednoisy.utils.wandb_logger import WandbLogger
 
 args = read_fednll_args()
 if torch.cuda.is_available():
@@ -59,10 +61,11 @@ if args.dataset == "clothing1m":
 nll_name = nllF.FedNLL_name(**vars(args))
 exp_name = make_exp_name("fedavg", args)
 alg_name = make_alg_name(args)
-cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name)
+time_stamp=now()
+cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name,time_stamp)
 make_dirs(cmp_out_dir)
 
-if args.coteaching is True:
+if args.coteaching is True or args.dividemix is True:
     model = build_multi_model(
         args.model, CLASS_NUM[args.dataset], dataset=args.dataset, num_models=2
     )
@@ -80,29 +83,39 @@ client_logger = Logger(
     log_file=os.path.join(cmp_out_dir, "client.log"),
 )
 
+if args.use_wandb:
+    wandb_logger = WandbLogger(args.wandb_project_name, exp_cfg=vars(args))
+else:
+    wandb_logger = None
+
 # ==== choose server handler and client trainer ====
 handler = FedAvgServerHandler(
-    model, args.com_round, args.sample_ratio, logger=server_logger, args=args
+    model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
 )  # server
 
 if args.mixup is True:
     # ---- FedAvg-Mixup ----
     trainer = FedNLLFedAvgMixupClientTrainer(
-        model, args.num_clients, cuda=True, logger=client_logger, args=args
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     )  # client
 elif args.coteaching is True:
     # ---- FedAvg-Coteaching ----
     trainer = FedNLLFedAvgCoteachingClientTrainer(
-        model, args.num_clients, cuda=True, logger=client_logger, args=args
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
+    )  # client
+elif args.dividemix is True:
+    # ---- FedAvg-DivideMix ----
+    trainer = FedNLLFedAvgDivideMixClientTrainer(
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     )  # client
 elif args.dynboot is True:
     trainer = FedNLLFedAvgDynamicBootstrappingClientTrainer(
-        model, args.num_clients, cuda=True, logger=client_logger, args=args
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     )
 else:
     # ---- FedAvg & FedAvg-RobustLoss ----
     trainer = FedNLLFedAvgClientTrainer(
-        model, args.num_clients, cuda=True, logger=client_logger, args=args
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     )  # client
 
 # ==== server dataset ====
@@ -120,5 +133,6 @@ trainer.setup_optim(
 
 # ====  launch pipeline ====
 print(f"FedNLL scene: {nll_name}")
-pipeline = FedAvgStandalone(handler, trainer, args=args, save_best=args.save_best)
+pipeline = FedAvgStandalone(handler, trainer, args=args, save_best=args.save_best, out_path=cmp_out_dir, wandb_logger=wandb_logger)
+
 pipeline.main()

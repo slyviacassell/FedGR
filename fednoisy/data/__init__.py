@@ -1,4 +1,6 @@
 import torchvision.transforms as transforms
+from fednoisy.utils.augmentations import RandAugment, RandomResizedCropAndInterpolation
+import math
 
 # automobile < - truck, bird -> airplane, cat <-> dog, deer -> horse
 CIFAR10_TRANSITION_MATRIX = {0: 0, 1: 1, 2: 0, 3: 5, 4: 7, 5: 3, 6: 6, 7: 7, 8: 8, 9: 1}
@@ -14,16 +16,19 @@ CIFAR10_TRANSITION_MATRIX = {0: 0, 1: 1, 2: 0, 3: 5, 4: 7, 5: 3, 6: 6, 7: 7, 8: 
 
 NORM_VALUES = {
     "cifar10": [(0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)],
+    # "cifar10": [(0.485, 0.456, 0.406), (0.229, 0.224, 0.225)], # fedrn
     "cifar100": [(0.507, 0.487, 0.441), (0.267, 0.256, 0.276)],
     "mnist": [(0.1307,), (0.3081,)],
     "svhn": [(0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970)],
     "clothing1m": [(0.6959, 0.6537, 0.6371), (0.3113, 0.3192, 0.3214)],
+    # "clothing1m": [(0.485, 0.456, 0.406), (0.229, 0.224, 0.225)], # fedcorr
     "webvision": [(0.485, 0.456, 0.406), (0.229, 0.224, 0.225)],
 }
 
 TRAIN_TRANSFORM = {
     "cifar10": transforms.Compose(
         [
+            # transforms.Resize(32),
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -32,6 +37,7 @@ TRAIN_TRANSFORM = {
     ),
     "cifar100": transforms.Compose(
         [
+            # transforms.Resize(32),
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(20),
@@ -47,6 +53,7 @@ TRAIN_TRANSFORM = {
     ),
     "svhn": transforms.Compose(
         [
+            # transforms.Resize(32),
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -62,6 +69,42 @@ TRAIN_TRANSFORM = {
             transforms.Normalize(*NORM_VALUES["clothing1m"]),
         ]
     ),
+}
+
+TRAIN_TRANSFORM_STRONG = {
+    "cifar10": transforms.Compose([
+        # transforms.Resize(32),
+        transforms.RandomCrop(32, padding=int(32 * (1 - 0.875)), padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        RandAugment(3, 5),
+        transforms.ToTensor(),
+        transforms.Normalize(*NORM_VALUES["cifar10"])
+    ]),
+    "cifar100": transforms.Compose([
+        # transforms.Resize(32),
+        transforms.RandomCrop(32, padding=int(32 * (1 - 0.875)), padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        RandAugment(3, 5),
+        transforms.ToTensor(),
+        transforms.Normalize(*NORM_VALUES["cifar100"])
+    ]),
+    "svhn":transforms.Compose([
+        # transforms.Resize(32),
+        transforms.RandomCrop((32, 32), padding=int(32 * (1 - 0.875)), padding_mode='reflect'),
+        # RandomResizedCropAndInterpolation((32, 32), scale=(0.8, 1.0)),
+        transforms.RandomHorizontalFlip(),
+        RandAugment(3, 5),
+        transforms.ToTensor(),
+        transforms.Normalize(*NORM_VALUES["svhn"]),
+    ]), 
+    "clothing1m": transforms.Compose([
+        transforms.Resize((int(math.floor(224 / 0.875)), int(math.floor(224 / 0.875)))),
+        RandomResizedCropAndInterpolation((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        RandAugment(3, 10),
+        transforms.ToTensor(),
+        transforms.Normalize(*NORM_VALUES["clothing1m"]),
+    ]),
 }
 
 TEST_TRANSFORM = {

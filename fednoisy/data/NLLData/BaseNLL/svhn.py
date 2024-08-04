@@ -86,6 +86,7 @@ class NLLSVHN(NLLBase):
 
         self.test_labels = test_labels
         self.test_data = test_data
+        self.test_guids = np.array([i for i in range(len(self.test_data))]) # dataset cartography
         print(f"{self.dataset_name} testset is loaded.")
         if save is True:
             self.save_testset()
@@ -110,6 +111,7 @@ class NLLSVHN(NLLBase):
 
         self.train_labels = train_labels
         self.train_data = train_data
+        self.train_guids = np.array([i for i in range(len(self.train_data))]) # dataset cartography
         print(f"{self.dataset_name} trainset is loaded.")
         if save is True:
             self.save_trainset()

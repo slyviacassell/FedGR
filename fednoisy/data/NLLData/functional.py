@@ -1,4 +1,4 @@
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler, default_collate, RandomSampler
 import torchvision.transforms as transforms
 import random
 import warnings
@@ -10,8 +10,9 @@ import os
 import torch
 from torchnet.meter import AUCMeter
 import torchvision
+import copy
 
-from typing import Dict, List, Set, Optional, Any
+from typing import Dict, Iterator, List, Set, Optional, Any, Sized
 from fednoisy.data import CLASS_NUM
 
 
@@ -21,6 +22,7 @@ class NoisyDataset(Dataset):
         data,
         labels,
         noisy_labels=None,
+        guids=None,
         train=True,
         transform=None,
         folder_data=False,
@@ -37,6 +39,7 @@ class NoisyDataset(Dataset):
         """
         self.data = data
         self.labels = labels
+        self.guids = guids
         self.noisy_labels = noisy_labels
         self.train = train
         self.transform = transform
@@ -59,17 +62,30 @@ class NoisyDataset(Dataset):
             # clothing1m data
             img_path, label = self.data[index], self.labels[index]
             img = Image.open(img_path).convert("RGB")
-
+        guid = self.guids[index]
         img = self.transform(img)
 
         if self.train:
             noisy_label = self.noisy_labels[index]
-            return img, label, noisy_label
+            return {
+                    "img": img,
+                    "label": label, 
+                    "noisy_label": noisy_label,
+                    "guid": guid,
+                }
         else:
-            return img, label
+            return {
+                "img": img, 
+                "label": label,
+                "guid": guid,
+            }
 
     def __len__(self):
         return len(self.labels)
+    
+    def get_overall_noise_rate(self):
+        clean_mask = self.labels == self.noisy_labels
+        return sum(clean_mask)/len(clean_mask)
 
 
 def FedNLL_name(
@@ -144,6 +160,24 @@ def symmetric_label_flipping(
     return noisy_labels
 
 
+def get_transition_matrix(labels: List[int], noisy_labels: List[int], class_space: Set[int]):
+    """Get the noise transition matrix along with labels."""
+    num_classes = len(list(class_space))
+
+    clean_t = np.zeros((num_classes,num_classes))
+    for l in labels:
+        clean_t[l,l] = clean_t[l,l]+1
+
+    t = np.zeros((num_classes,num_classes))
+    for l,nl in zip(labels,noisy_labels):
+        t[l,nl] = t[l,nl]+1
+
+    diag_clean_t = np.diag(clean_t)
+    valid_clean_sample_cnt = diag_clean_t[diag_clean_t > 0, np.newaxis]
+    t[diag_clean_t > 0,:] = t[diag_clean_t > 0,:] / (valid_clean_sample_cnt + 1e-8)
+    return t
+
+        
 def build_for_cifar100(size: int, noise: float):
     """random flip between two random classes. Pairwise label noise"""
     assert (noise >= 0.0) and (noise <= 1.0)
@@ -278,6 +312,51 @@ def generate_local_noisy_labels(
         raise ValueError(
             f"Repartition the dataset! Each client should at least contain 2 classes!"
         )
+
+    for i in range(sample_num):
+        if i in noisy_idxs:
+            if noise_mode == "sym":
+                y_ = other_class(class_space, labels[i])
+            elif noise_mode == "asym":
+                possible_y = transition[labels[i]]
+                if possible_y in class_space:
+                    y_ = possible_y
+                else:
+                    y_ = next_class(class_space, labels[i], dataset)
+            noisy_labels.append(y_)
+        else:
+            noisy_labels.append(labels[i])
+
+    return noisy_labels
+
+
+def generate_local_noisy_labels_class_space(
+    labels: List[int],
+    class_space: Set[int],
+    noise_mode: str = "sym",
+    noise_ratio: float = 0.1,
+    transition: Dict[int, int] = None,
+    dataset: str = "ciafr10",
+) -> List[int]:
+    """Generate localized noisy labels for global class space based on noise setting.
+
+    Args:
+        labels:
+        class_space:
+        noise_mode:
+        noise_ratio:
+        transition (Dict[int, int]): Transition matrix for asymmetric noise.
+        dataset (str): Dataset name.
+
+    Returns:
+
+    """
+    sample_num = len(labels)
+    idxs = list(range(sample_num))
+    random.shuffle(idxs)
+    num_noise = int(sample_num * noise_ratio)
+    noisy_idxs = idxs[:num_noise]
+    noisy_labels = []
 
     for i in range(sample_num):
         if i in noisy_idxs:

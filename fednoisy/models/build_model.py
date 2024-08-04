@@ -1,4 +1,4 @@
-from .cnn import Cifar10Net, SimpleCNN, SimpleCNNMNIST
+from .cnn import Cifar10Net, SimpleCNN, SimpleCNNMNIST, CNN
 from .lenet import CIFAR10LeNet, MNISTLeNet
 from .toymodel import ToyModel
 from .resnet import ResNet18, ResNet34
@@ -36,6 +36,23 @@ def build_model(model_name: str, num_classes: int = 10, dataset: str = "CIFAR10"
             base_model = SimpleCNNMNIST(
                 input_dim=(16 * 4 * 4), hidden_dims=[120, 84], output_dim=10
             )
+        elif dataset.upper() in ["CIFAR100"]:
+            base_model = SimpleCNN(
+                input_dim=(16 * 5 * 5), hidden_dims=[120, 84], output_dim=100
+            )
+    elif model_name == "CNN":
+        if dataset.upper() in ["CIFAR10", "SVHN"]:
+            base_model = CNN(
+                input_channel=3, n_outputs=10
+            )
+        elif dataset.upper() in ["MNIST", "FEMNIST", "FMNIST"]:
+            base_model = CNN(
+                input_channel=1, n_outputs=10
+            )
+        elif dataset.upper() in ["CIFAR100"]:
+            base_model = CNN(
+                input_channel=3, n_outputs=100
+            )
     elif model_name == "LeNet":
         if dataset.upper() == ["CIFAR10", "SVHN"]:
             base_model = CIFAR10LeNet()
@@ -65,13 +82,13 @@ def build_model(model_name: str, num_classes: int = 10, dataset: str = "CIFAR10"
     elif model_name == "WRN40_2":
         base_model = WRN40_2(num_classes)
     elif model_name == "VGG11":
-        base_model = VGG11()
+        base_model = VGG11(num_classes)
     elif model_name == "VGG13":
-        base_model = VGG13()
+        base_model = VGG13(num_classes)
     elif model_name == "VGG16":
-        base_model = VGG16()
+        base_model = VGG16(num_classes)
     elif model_name == "VGG19":
-        base_model = VGG19()
+        base_model = VGG19(num_classes)
     else:
         raise ValueError(
             f"Unrecognized model: {model_name}. Currently only support 'Cifar10Net', 'SimpleCNN',  'LeNet', 'VGG11', 'VGG13', 'VGG16', 'VGG19', 'ToyModel', 'ResNet18', 'ResNet20', 'WRN28_10', 'WRN40_2', 'ResNet32' and 'ResNet34'."

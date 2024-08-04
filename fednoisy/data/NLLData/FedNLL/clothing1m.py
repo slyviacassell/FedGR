@@ -123,6 +123,10 @@ class FedNLLClothing1M(NLLClothing1M, FedNLLScene):
         self.client_dict = client_dict
         self.data_dict = F.split_data(client_dict, self.train_data)
         self.labels_dict = F.split_data(client_dict, self.train_labels)
+        if hasattr(self,"train_guids"): # dataset cartography
+            self.guids_dict = F.split_data(self.client_dict, self.train_guids) 
+        else:
+            self.guids_dict = None
         self.noisy_labels_dict = copy.deepcopy(self.labels_dict)
         self.true_noise_ratio = [None for _ in range(self.num_clients)]
         print(f"Clothing1M trainset generated: {self.num_samples} samples in total.")
@@ -158,6 +162,7 @@ class FedNLLClothing1M(NLLClothing1M, FedNLLScene):
             client_dataset = NoisyDataset(
                 data=self.data_dict[cid],
                 labels=self.labels_dict[cid],
+                guids=self.guids_dict[cid] if self.guids_dict is not None else self.guids_dict,
                 noisy_labels=self.noisy_labels_dict[cid],
                 train=True,
                 transform=train_transform,
@@ -172,6 +177,7 @@ class FedNLLClothing1M(NLLClothing1M, FedNLLScene):
         test_dataset = NoisyDataset(
             data=self.test_data,
             labels=self.test_labels,
+            guids=self.test_guids,
             train=False,
             transform=test_transform,
             folder_data=True,

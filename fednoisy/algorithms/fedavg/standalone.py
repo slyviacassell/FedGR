@@ -34,26 +34,26 @@ from fednoisy.utils.misc import (
     make_exp_name,
     result_parser,
     make_alg_name,
+    now,
 )
 from fednoisy.models.build_model import build_model
+
+from fednoisy.utils.wandb_logger import WandbLogger
 
 
 class FedAvgStandalone(StandalonePipeline):
     def __init__(
-        self, handler, trainer, args, logger=None, save_best=False, save_last=True
+        self, handler, trainer, args, out_path, logger=None, wandb_logger: WandbLogger=None, save_best=False, save_last=True,
     ):
         super().__init__(handler, trainer)
         self._LOGGER = Logger() if logger is None else logger
+        self.wandb_logger = wandb_logger
         self.save_best = save_best
         self.save_last = save_last
         self.args = args
         self.exp_name = make_exp_name("fedavg", args)
         self.nll_name = nllF.FedNLL_name(**vars(args))
-        alg_name = make_alg_name(args)
-        self.out_path = os.path.join(
-            args.out_dir, self.nll_name, alg_name, self.exp_name
-        )
-        make_dirs(self.out_path)
+        self.out_path = out_path
         self.record_file = os.path.join(self.out_path, "result_record.txt")
         self.best_model_path = os.path.join(self.out_path, "best_global_model.pth")
         self.last_model_path = os.path.join(self.out_path, "last_global_model.pth")
@@ -75,6 +75,7 @@ class FedAvgStandalone(StandalonePipeline):
         while self.handler.if_stop is False:
             # server side
             sampled_clients = self.handler.sample_clients()
+            # broadcast = self.handler.downlink_package
             broadcast = self.handler.downlink_package
 
             # client side
@@ -99,6 +100,16 @@ class FedAvgStandalone(StandalonePipeline):
 
     def evaluate(self):
         loss_, acc_ = self.handler.evaluate()
+        if self.wandb_logger is not None:
+            self.wandb_logger.run.log(
+                    {
+                        "global/test-loss": loss_,
+                        "global/test-acc": acc_,
+                        "global/comm_round": self.handler.round
+                    },
+                    step=self.handler.round,
+                    # commit=True,
+                )
         self.handler._LOGGER.info(
             f"Round [{self.handler.round - 1}/{self.handler.global_round}] test performance on server: \t Loss: {loss_:.5f} \t Acc: {100*acc_:.3f}%"
         )

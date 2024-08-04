@@ -143,6 +143,26 @@ def read_args():
         help="Number of samples used for Clothing1M training. Defaults as 64000.",
     )
 
+    parser.add_argument(
+        "--local_noise_mode",
+        default="uniform",
+        type=str,
+        help="Local noise model. Only works when 'globalize' is Flase",
+        choices=["uniform", "gaussian"]
+    )
+    parser.add_argument(
+        "--noise_ratio_mu",
+        default=0.2,
+        type=float,
+        help="Mean noise ratio for local gaussian symmetric noise or asymmetric noise. Only works when 'globalize' is Flase",
+    )
+    parser.add_argument(
+        "--noise_ratio_sigma",
+        default=0.2,
+        type=float,
+        help="Std noise ratio for local gaussian  symmetric noise or asymmetric noise. Only works when 'globalize' is Flase",
+    )
+
     # ----Dataset path options----
     parser.add_argument(
         "--dataset",
@@ -242,6 +262,9 @@ if __name__ == "__main__":
             max_noise_ratio=args.max_noise_ratio,
             root_dir=args.raw_data_dir,
             out_dir=args.data_dir,
+            local_noise_mode=args.local_noise_mode,
+            noise_ratio_mu=args.noise_ratio_mu,
+            noise_ratio_sigma=args.noise_ratio_sigma,
         )
         nll_cifar10.create_nll_scene(seed=args.seed)
         nll_cifar10.save_nll_scene()
@@ -258,6 +281,9 @@ if __name__ == "__main__":
             max_noise_ratio=args.max_noise_ratio,
             root_dir=args.raw_data_dir,
             out_dir=args.data_dir,
+            local_noise_mode=args.local_noise_mode,
+            noise_ratio_mu=args.noise_ratio_mu,
+            noise_ratio_sigma=args.noise_ratio_sigma,
         )
         nll_cifar100.create_nll_scene(seed=args.seed)
         nll_cifar100.save_nll_scene()
@@ -274,6 +300,9 @@ if __name__ == "__main__":
             max_noise_ratio=args.max_noise_ratio,
             root_dir=args.raw_data_dir,
             out_dir=args.data_dir,
+            local_noise_mode=args.local_noise_mode,
+            noise_ratio_mu=args.noise_ratio_mu,
+            noise_ratio_sigma=args.noise_ratio_sigma,
         )
         nll_mnist.create_nll_scene(seed=args.seed)
         nll_mnist.save_nll_scene()
@@ -291,6 +320,9 @@ if __name__ == "__main__":
             max_noise_ratio=args.max_noise_ratio,
             root_dir=args.raw_data_dir,
             out_dir=args.data_dir,
+            local_noise_mode=args.local_noise_mode,
+            noise_ratio_mu=args.noise_ratio_mu,
+            noise_ratio_sigma=args.noise_ratio_sigma,
         )
         nll_svhn.create_nll_scene(seed=args.seed)
         nll_svhn.save_nll_scene()

@@ -47,6 +47,9 @@ class FedNLLMNIST(NLLMNIST, FedNLLScene):
         min_noise_ratio: float = 0.0,
         max_noise_ratio: float = 1.0,
         min_require_size: Optional[int] = 10,
+        local_noise_mode: str = "uniform",
+        noise_ratio_mu: float = 0.0,
+        noise_ratio_sigma: float = 0.0,
     ):
         NLLMNIST.__init__(self, root_dir, noise_mode, out_dir)
         FedNLLScene.__init__(
@@ -63,4 +66,7 @@ class FedNLLMNIST(NLLMNIST, FedNLLScene):
             min_noise_ratio,
             max_noise_ratio,
             min_require_size,
+            local_noise_mode=local_noise_mode,
+            noise_ratio_mu=noise_ratio_mu,
+            noise_ratio_sigma=noise_ratio_sigma,
         )
