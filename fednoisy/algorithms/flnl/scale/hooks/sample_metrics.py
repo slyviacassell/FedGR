@@ -217,6 +217,12 @@ class SampleMetricEvalServerHook(SerialClientTrainerHook):
                 # step=server_handler.round,
             )
 
+            # gmm plot all metrics
+            sns.histplot(data=df[(df["selected"] == True)]["metric", "is_clean"], x="metric", hue="is_clean", kde=True)
+            fig = plt.gcf()
+            server_handler.wandb_logger.run.log({f"{server_handler.args.cs_metric} gmm": wandb.Image(fig)}, commit=False)
+            plt.close(fig)
+
         gmm_guids = df[(df["selected"] == True)]["guid"].to_numpy()
 
         self.sample_selection(server_handler.metrics_container, gmm_guids, y_pred)
