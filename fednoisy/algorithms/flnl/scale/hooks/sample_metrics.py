@@ -28,7 +28,6 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         self.sample_metric_container = [{} for _ in range(client_trainer.num_clients)]
 
     def on_local_process_start(self, client_trainer, *args, **kwargs):
-        
         p = 1
         client_trainer.overall_clean_guids = client_trainer.cur_payload[p].numpy()
         client_trainer.overall_noisy_guids = client_trainer.cur_payload[p+1].numpy()

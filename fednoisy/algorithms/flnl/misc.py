@@ -10,7 +10,7 @@ from fednoisy.data.NLLData import functional as nllF
 def read_fednll_args():
     parser = argparse.ArgumentParser(description="Federated Noisy Labels Preparation")
 
-    parser.add_argument("--exp_name", type=str, default="fedavg_cs", help="Experiment name.")
+    parser.add_argument("--exp_name", type=str, default="fedap_cs", help="Experiment name.")
 
     # ==== Scale args ====
     parser.add_argument("--ip", default="localhost", type=str,)
@@ -71,6 +71,9 @@ def read_fednll_args():
     )
     parser.add_argument(
         "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
+    )
+    parser.add_argument(
+        "--mask_out_loss", action="store_true", help="Whether to use MaskOut loss."
     )
     
     # todo

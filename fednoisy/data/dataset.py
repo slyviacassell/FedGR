@@ -191,7 +191,7 @@ class FedNLLDataset(FedDataset):
             shuffle=shuffle,
             num_workers=num_workers,
             # pin_memory=True, # memory leak for fedlab scale
-            # persistent_workers=True,
+            persistent_workers=True,
         )
         return data_loader
 
@@ -247,7 +247,7 @@ class FedNLLDataset(FedDataset):
             shuffle=shuffle,
             num_workers=num_workers,
             # pin_memory=True, # memory leak for fedlab scale
-            # persistent_workers=True,
+            persistent_workers=True,
         )
         return data_loader
 
