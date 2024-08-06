@@ -75,12 +75,13 @@ def main():
     nll_name = nllF.FedNLL_name(**vars(args))
     # exp_name = make_exp_name("fedavg", args)
     exp_name = args.exp_name
-    alg_name = "FedAP"
+    alg_name = "FedAP-scale"
     time_stamp=now()
     cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name,time_stamp)
     args.time_stamp = time_stamp
     make_dirs(cmp_out_dir)
 
+    assert args.num_clients == (args.world_size - 1) * args.num_clients_per_gpu
 
     model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
     
@@ -113,7 +114,7 @@ def scale(rank, args, cmp_out_dir, model):
             world_size=args.world_size,
             rank=rank,
             ethernet=args.ethernet,
-        )
+        ) # default timeout is 30 minutes
         
         if args.use_cs:
             handler = FedAPCSServerHandler(

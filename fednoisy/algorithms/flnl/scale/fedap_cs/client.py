@@ -67,7 +67,7 @@ from fednoisy.core.hooks import (
 )
 
 from fednoisy.algorithms.flnl.scale.fedap import FedAPClientTrainer
-from fednoisy.algorithms.flnl.scale.hooks import (
+from fednoisy.algorithms.flnl.hooks import (
     SampleMetricEvalClientHook,
     LabelNoiseMaskOutLossHook,
 )

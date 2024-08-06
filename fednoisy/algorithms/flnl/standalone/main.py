@@ -24,13 +24,18 @@ from fednoisy.data import (
 )
 from fednoisy.data.NLLData import functional as nllF
 
-
-from fednoisy.algorithms.flnl.standalone.fedap.client import FedAPClientTrainer
-from fednoisy.algorithms.flnl.standalone.fedap.server import FedAPServerHandler
 from fednoisy.algorithms.flnl.standalone.standalone import FedAPStandalone
+from fednoisy.algorithms.flnl.standalone.fedap import (
+    FedAPClientTrainer,
+    FedAPServerHandler,
+)
+from fednoisy.algorithms.flnl.standalone.fedap_cs import (
+    FedAPCSClientTrainer,
+    FedAPCSServerHandler,
+)
 
 
-from fednoisy.algorithms.fedavg_cs.misc import read_fednll_args
+from fednoisy.algorithms.flnl.misc import read_fednll_args
 from fednoisy.data.dataset import FedNLLDataset
 from fednoisy.utils.misc import (
     setup_seed,
@@ -38,7 +43,7 @@ from fednoisy.utils.misc import (
     result_parser,
     now,
 )
-from fednoisy.models.build_model import build_model, build_multi_model, build_volmin_model
+from fednoisy.models.build_model import build_model, build_multi_model
 from fednoisy.utils.wandb_logger import WandbLogger
 
 
@@ -56,7 +61,7 @@ if args.dataset == "clothing1m":
 
 nll_name = nllF.FedNLL_name(**vars(args))
 exp_name = args.exp_name
-alg_name = "FedAP"
+alg_name = "FedAP-standalone"
 time_stamp=now()
 cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name,time_stamp)
 make_dirs(cmp_out_dir)
@@ -87,14 +92,24 @@ else:
     wandb_logger = None
 
 # ==== choose server handler and client trainer ====
-handler = FedAPServerHandler(
-    model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
-) # server
+if args.use_cs:
+    handler = FedAPCSServerHandler(
+        model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
+    ) # server
+else:
+    handler = FedAPServerHandler(
+        model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
+    ) # server
 
 # ---- FedAvg & FedAvg-RobustLoss ----
-trainer = FedAPClientTrainer(
-    model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
-) # client
+if args.use_cs:
+    trainer = FedAPCSClientTrainer(
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
+    ) # client
+else:
+    trainer = FedAPClientTrainer(
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
+    ) # client
 
 # ==== server dataset ====
 handler_dataset = FedNLLDataset(args, test_preload=args.preload, train_preload=args.preload)

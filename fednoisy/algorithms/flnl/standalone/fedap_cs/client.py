@@ -66,8 +66,13 @@ from fednoisy.core.hooks import (
     GlobalGradNormMonitorHook,
 )
 
+from fednoisy.algorithms.flnl.standalone.fedap import FedAPClientTrainer
+from fednoisy.algorithms.flnl.hooks import (
+    SampleMetricEvalClientHook,
+    LabelNoiseMaskOutLossHook,
+)
 
-class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
+class FedAPCSClientTrainer(FedAPClientTrainer):
     def __init__(
         self,
         model,
@@ -79,70 +84,24 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         personal=False,
         args=None,
     ) -> None:
-        SGDSerialClientTrainer.__init__(
-            self, model, num_clients, cuda, device, logger, personal,
+        # custom attributes
+
+        super(FedAPCSClientTrainer, self).__init__(
+            model, num_clients, cuda, device, logger, wandb_logger, personal, args
         )
-        SerialClientAlogrithmBase.__init__(self)
-        self.cache = []
-        self.args = args
-        self.wandb_logger = wandb_logger
-
-        self.cur_global_model = deepcopy(self._model)
-
-        self.cur_payload = None  
-
-        self.is_prox = self.args.use_fedprox
-        
-        self.set_hooks() 
-
-        self.on_init()
 
     def set_hooks(self):
-        self.register_hooks(TestHook(test_interval=5), None, "LOWEST")
-        self.register_hooks(EvaluateTrainHook(model=self.model, log_annotation="local", eval_interval=1), "local_eval", "LOWEST")
-        self.register_hooks(EvaluateTrainHook(model=self.cur_global_model, log_annotation="global", eval_interval=1), "global_eval", "LOWEST")
-        if self.args.grad_clip:
-            self.register_hooks(ClientGradClipHook(clip_grad_norm=self.args.clip_grad_norm), None, "LOWEST")
-        if type(self) == FedAPClientTrainer:
+        self.register_hooks(SampleMetricEvalClientHook(), None, "LOWEST")
+
+        if self.args.mask_out_loss:
+            self.register_hooks(LabelNoiseMaskOutLossHook(), "mask_out_loss","LOWEST")
+
+        super(FedAPCSClientTrainer, self).set_hooks()
+
+        if type(self) ==  FedAPCSClientTrainer:
             self._LOGGER.info(
                 f"Client Registered hooks: {self.hooks_dict.keys()}"
             )
-
-    @property
-    def model_parameters(self) -> torch.Tensor:
-        return misc.serialize_model(self._model)
-
-    def set_model(self, parameters: torch.Tensor):
-        misc.deserialize_model(self._model, parameters)
-
-    def set_global_model(self, parameters: torch.Tensor):
-        misc.deserialize_model(self.cur_global_model, parameters)
-
-    def setup_optim(self, epochs, batch_size, lr, weight_decay, momentum):
-        self.epochs = epochs
-        self.lr = lr
-        self.batch_size = batch_size
-        self.momentum = momentum
-        self.weight_decay = weight_decay
-        self.optimizer = torch.optim.SGD(
-            self._model.parameters(), lr, weight_decay=weight_decay, momentum=momentum
-        )
-        self.criterion = get_robust_loss(CLASS_NUM[self.args.dataset], self.args)
-    
-        # used for initialization for lr_scheduler
-        for group in self.optimizer.param_groups:
-            group.setdefault('initial_lr', group['lr'])
-        self.lr_scheduler=get_lr_scheduler(args=self.args,optimizer=self.optimizer,last_epoch=(self.round - 1) if hasattr(self,"round") else -1)
-    
-    def set_global_cid(self, local_id_list, rank):
-        global_id_list = local_id_list + (rank - 1) * self.num_clients
-        self.global_id_list = global_id_list.tolist()
-
-    @property
-    def uplink_package(self):
-        package = deepcopy(self.cache)
-        self.cache = []
-        return package
 
     def local_process(self, payload, id_list, cur_round):
         self.id_list = id_list
@@ -206,7 +165,10 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
                     noisy_labels = noisy_labels.to(self.device)
 
                 outputs = self.model(imgs)
-                loss = self.criterion(outputs, noisy_labels)
+                if self.hooks_dict.get("mask_out_loss", None) is not None:
+                    loss = self.call_hook("loss", "mask_out_loss", outputs, noisy_labels, guids=guids)
+                else:
+                    loss = self.criterion(outputs, noisy_labels)
 
                 if self.is_prox:
                     l2 = 0.0
@@ -241,5 +203,5 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
             f"Round {self.round} client-{self.g_cid} local training done."
         )
 
-        local_result = [self.model_parameters, data_size, g_cid]
+        local_result = [self.model_parameters, data_size, g_cid] + self.cs_metrics
         return local_result

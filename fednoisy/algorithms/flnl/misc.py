@@ -12,6 +12,14 @@ def read_fednll_args():
 
     parser.add_argument("--exp_name", type=str, default="fedap_cs", help="Experiment name.")
 
+    # ==== Standalone args ====
+    parser.add_argument(
+        "--num_clients",
+        default=10,
+        type=int,
+        help="Number for clients.",
+    )
+
     # ==== Scale args ====
     parser.add_argument("--ip", default="localhost", type=str,)
     parser.add_argument("--port", default=3002, type=str,)

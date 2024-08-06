@@ -41,7 +41,7 @@ from fednoisy.core.hooks import (
     TestHook,
     GlobalGradNormMonitorHook,
 )
-from fednoisy.algorithms.flnl.scale.fedap import FedAPServerHandler
+from fednoisy.algorithms.flnl.standalone.fedap import FedAPServerHandler
 from fednoisy.algorithms.flnl.hooks import SampleMetricEvalServerHook
 
 
