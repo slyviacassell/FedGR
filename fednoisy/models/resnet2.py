@@ -82,6 +82,7 @@ class BasicBlock(nn.Module):
             if option == "A":
                 """
                 For CIFAR10 ResNet paper uses option A.
+                Zero padding.
                 """
                 self.shortcut = LambdaLayer(
                     lambda x: F.pad(

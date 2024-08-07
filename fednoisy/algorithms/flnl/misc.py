@@ -75,7 +75,7 @@ def read_fednll_args():
         "--use_cs", action="store_true", help="Whether to use CS model."
     )
     parser.add_argument(
-        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean"], default="loss"
+        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean"], default="loss"
     )
     parser.add_argument(
         "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."

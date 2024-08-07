@@ -58,6 +58,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
             cs_metrics = sample_metrics["loss"].to_numpy()
         elif client_trainer.args.cs_metric == "loss_mean":
             cs_metrics = sample_metrics["loss_mean"].to_numpy()
+        elif client_trainer.args.cs_metric == "loss_soft_mean":
+            cs_metrics = sample_metrics["loss_soft_mean"].to_numpy()
 
         guids = torch.from_numpy(guids)
         clean_mask = torch.from_numpy(clean_mask)
@@ -111,6 +113,9 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         return sample_dynamics
     
     def sample_metrics_processing(self, sample_dynamics, cid, round) -> pd.DataFrame:
+        def scaling(x):
+                return (1. + x + x**2/2)
+
         sample_metric_container = self.sample_metric_container[cid]
         for guid,d in sample_dynamics.items():
             if guid not in sample_metric_container:
@@ -125,6 +130,10 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "perv_round": round,
 
                     "loss_mean": 0,
+                    "loss_vari": 0,
+                    "loss_soft_mean": 0,
+
+                    "cnt": 0,
                 }
             
             sample_metric_container[guid]["prev_round"] = sample_metric_container[guid]["cur_round"]
@@ -132,7 +141,20 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
 
             sample_metric_container[guid]["loss"] = d["noisy_loss"]
 
-            sample_metric_container[guid]["loss_mean"] = (sample_metric_container[guid]["loss_mean"] * round + d["noisy_loss"]) / (round + 1)
+            cnt = sample_metric_container[guid]["cnt"]
+
+            # rolling mean and variance
+            x_n_1 = sample_metric_container[guid]["loss_mean"] 
+            x_n = x_n_1 + (d["noisy_loss"] - x_n_1) / (cnt + 1)
+            sigma2_n_1 = sample_metric_container[guid]["loss_vari"]
+            sigma2_n = sigma2_n_1 + ((d["noisy_loss"] - x_n_1) * (d["noisy_loss"] - x_n) - sigma2_n_1) / (cnt + 1)
+            
+            sample_metric_container[guid]["loss_mean"] = x_n
+            sample_metric_container[guid]["loss_vari"] = sigma2_n
+            
+            sample_metric_container[guid]["loss_soft_mean"] = (sample_metric_container[guid]["loss_soft_mean"] * cnt + scaling(d["noisy_loss"])) / (cnt + 1)
+
+            sample_metric_container[guid]["cnt"] += 1
 
         df = pd.DataFrame(
                 [
@@ -141,6 +163,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                         m["loss"],
                         m["is_clean"],
                         m["loss_mean"],
+                        m["loss_soft_mean"],
                     ] for g,m in sample_metric_container.items()
                 ],
                 columns=[
@@ -148,6 +171,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "loss",
                     "is_clean",
                     "loss_mean",
+                    "loss_soft_mean",
                 ]
             )
 
@@ -179,12 +203,12 @@ class SampleMetricEvalServerHook(SerialClientTrainerHook):
                         server_handler.recv_clean_mask
                     )
 
-    def central_sieving(self, server_handler, recv_metrics, recv_guids, recv_y_true):
+    def central_sieving(self, server_handler, recv_metrics, recv_guids, recv_clean_mask):
         # update the metrics
         recv_metrics = np.concatenate(recv_metrics,axis=0)
         recv_guids = np.concatenate(recv_guids,axis=0)
-        recv_y_true = np.concatenate(recv_y_true,axis=0)
-        self.update_server_metrics(recv_guids, recv_metrics, server_handler.metrics_container, recv_y_true, server_handler.round)
+        recv_clean_mask = np.concatenate(recv_clean_mask,axis=0)
+        self.update_server_metrics(recv_guids, recv_metrics, server_handler.metrics_container, recv_clean_mask, server_handler.round)
 
         # get metrics for gmm
         df = self.metric_dict2df(server_handler.metrics_container)
@@ -192,7 +216,7 @@ class SampleMetricEvalServerHook(SerialClientTrainerHook):
 
         df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= 5)
         gmm_metrics = df[(df["selected"] == True)]["metric"].to_numpy()
-        gmm_y_true = df[(df["selected"] == True)]["y_true"].to_numpy()
+        gmm_y_true = df[(df["selected"] == True)]["is_clean"].to_numpy()
         
         y_pred, probs = self.gmm(gmm_metrics)
 
@@ -218,7 +242,8 @@ class SampleMetricEvalServerHook(SerialClientTrainerHook):
             )
 
             # gmm plot all metrics
-            sns.histplot(data=df[(df["selected"] == True)]["metric", "is_clean"], x="metric", hue="is_clean", kde=True)
+            # sns.set_theme(rc={"figure.figsize":(12.8,7.2),"figure.dpi":300})
+            sns.histplot(data=df[(df["selected"] == True)][["metric", "is_clean"]], x="metric", hue="is_clean", kde=True)
             fig = plt.gcf()
             server_handler.wandb_logger.run.log({f"{server_handler.args.cs_metric} gmm": wandb.Image(fig)}, commit=False)
             plt.close(fig)
@@ -248,14 +273,13 @@ class SampleMetricEvalServerHook(SerialClientTrainerHook):
             if g in metrics_container:
                 metrics_container[g]["selected"] = p
     
-    def update_server_metrics(self, guids, recv_metrics, server_metrics_container, y_true, round):
-        for guid, metric, y in zip(guids, recv_metrics, y_true):
+    def update_server_metrics(self, guids, recv_metrics, server_metrics_container, clean_mask, round):
+        for guid, metric, is_clean in zip(guids, recv_metrics, clean_mask):
             if guid not in server_metrics_container:
                 server_metrics_container[guid] = {
                     "metric_raw": metric,
-                    "y_true": y, # for debugging
+                    "is_clean": is_clean, # for debugging
                     "uploaded_round": round,
-                    "is_clean": True,
                     "selected": True,
                 }
             else:
@@ -268,14 +292,14 @@ class SampleMetricEvalServerHook(SerialClientTrainerHook):
                 [
                     guid, 
                     m["metric_raw"], 
-                    m["y_true"],
+                    m["is_clean"],
                     m["uploaded_round"],
                 ] for guid, m in metrics_container.items()
             ],
             columns=[
                 "guid", 
                 "metric_raw", 
-                "y_true",
+                "is_clean",
                 "uploaded_round",
             ]
         )

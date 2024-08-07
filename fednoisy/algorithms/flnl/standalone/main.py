@@ -64,6 +64,7 @@ exp_name = args.exp_name
 alg_name = "FedAP-standalone"
 time_stamp=now()
 cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name,time_stamp)
+args.time_stamp = time_stamp
 make_dirs(cmp_out_dir)
 
 model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)

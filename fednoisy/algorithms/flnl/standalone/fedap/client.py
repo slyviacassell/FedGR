@@ -99,8 +99,8 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
 
     def set_hooks(self):
         self.register_hooks(TestHook(test_interval=5), None, "LOWEST")
-        self.register_hooks(EvaluateTrainHook(model=self.model, log_annotation="local", eval_interval=1), "local_eval", "LOWEST")
-        self.register_hooks(EvaluateTrainHook(model=self.cur_global_model, log_annotation="global", eval_interval=1), "global_eval", "LOWEST")
+        self.register_hooks(EvaluateTrainHook(model=self.model, log_annotation="local", eval_interval=5), "local_eval", "LOWEST")
+        self.register_hooks(EvaluateTrainHook(model=self.cur_global_model, log_annotation="global", eval_interval=5), "global_eval", "LOWEST")
         if self.args.grad_clip:
             self.register_hooks(ClientGradClipHook(clip_grad_norm=self.args.clip_grad_norm), None, "LOWEST")
         if type(self) == FedAPClientTrainer:
