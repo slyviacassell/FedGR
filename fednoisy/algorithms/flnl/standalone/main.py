@@ -130,3 +130,6 @@ print(f"FedNLL scene: {nll_name}")
 pipeline = FedAPStandalone(handler, trainer, args=args, save_best=args.save_best, out_path=cmp_out_dir, wandb_logger=wandb_logger)
 
 pipeline.main()
+
+if args.use_wandb:
+    wandb_logger.run.finish()

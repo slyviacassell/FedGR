@@ -41,6 +41,11 @@ from fednoisy.core.hooks import (
     TestHook,
     GlobalGradNormMonitorHook,
 )
+from fednoisy.algorithms.flnl.hooks import (
+    FedProxGlobalAdaptiveMuScheduler,
+    FedProxMuConstantScheduler,
+)
+
 
 class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
     def __init__( 
@@ -70,6 +75,11 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
     def set_hooks(self):
         self.register_hooks(TestHook(), None, "LOWEST")
         self.register_hooks(GlobalGradNormMonitorHook(), None, "LOWEST")
+        if self.args.use_fedprox:
+            if self.args.fedprox_mu == "constant":
+                self.register_hooks(FedProxMuConstantScheduler(self.args), "fedprox_mu_scheduler", "LOWEST")
+            elif self.args.fedprox_mu == "adaptive":
+                self.register_hooks(FedProxGlobalAdaptiveMuScheduler(self.args, mu_delta=0.01), "fedprox_mu_scheduler", "LOWEST")
         if type(self) ==  FedAPServerHandler:
             self._LOGGER.info(
                 f"Server Registered hooks: {self.hooks_dict.keys()}"
@@ -100,10 +110,13 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
         # the self.round increases after global updating
         parameters_list = [elem[0] for elem in buffer]
         weights = [elem[1] for elem in buffer]
-        cid_list = [elem[2].int().item() for elem in buffer]
+        local_losses = [elem[2] for elem in buffer] # for fedprox adaptive mu scheduler
+        cid_list = [elem[3].int().item() for elem in buffer]
 
         self.on_global_update_start()
 
+        if self.args.use_fedprox:
+            self.call_hook("step", "fedprox_mu_scheduler", local_losses, weights)
         serialized_parameters = Aggregators.fedavg_aggregate(parameters_list, weights)
         self.set_model(serialized_parameters)
         self._LOGGER.info(
@@ -114,7 +127,11 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
 
     @property
     def downlink_package(self) -> List[torch.Tensor]:
-        return [self.model_parameters]
+        if self.args.use_fedprox:
+            mu = self.call_hook("get_mu", "fedprox_mu_scheduler")
+        else:
+            mu = 0.0
+        return [self.model_parameters, mu]
     
     # def sample_clients(self):        
     #     if self.num_clients_per_round < self.num_clients:

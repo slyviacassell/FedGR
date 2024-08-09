@@ -63,13 +63,17 @@ def read_fednll_args():
     parser.add_argument("--wandb_tags",nargs="+",type=str,default=None)
     parser.add_argument("--wandb_job_type",type=str,default=None)
 
+    # ----FedProx args----
+    parser.add_argument(
+        "--use_fedprox", action="store_true", help="Whether to use FedProx."
+    )
+    parser.add_argument(
+        "--fedprox_mu", type=str, choices=["constant", "adaptive"], default="constant", help="The mu scheduler for FedProx."
+    )
 
     # ----FedRobust args----
     parser.add_argument(
         "--warmup_round", type=int, default=0, help="The warmup round."
-    )
-    parser.add_argument(
-        "--use_fedprox", action="store_true", help="Whether to use FedProx."
     )
     parser.add_argument(
         "--use_cs", action="store_true", help="Whether to use CS model."

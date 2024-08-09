@@ -66,6 +66,7 @@ class FedNLLDataset(FedDataset):
         self.num = TRAIN_SAMPLE_NUM[args.dataset]
         self.test_loader = None
 
+        self.loader_cache = True
         self.train_queue_size = 20
         self.train_p = 0 # queue pointer
         self.train_p_map = {}
@@ -111,7 +112,7 @@ class FedNLLDataset(FedDataset):
         overall_noisy_ratio /= len(dataset)
         return overall_noisy_ratio
 
-    def get_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2): # todo: temprary solution for OOM with 100 clients
+    def get_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2):
         
         if train:
             if self.train_p_map.get(cid, None) is None: # speedup data loader init, more memory usage
@@ -124,7 +125,8 @@ class FedNLLDataset(FedDataset):
                     pin_memory=True,
                     persistent_workers=True,
                 )
-                self.train_p = self.dequeue_enqueue(data_loader,cid,self.train_p,self.train_loaders_queue,self.train_p_map,self.train_cid_map,self.train_queue_size)
+                if self.loader_cache:
+                    self.train_p = self.dequeue_enqueue(data_loader,cid,self.train_p,self.train_loaders_queue,self.train_p_map,self.train_cid_map,self.train_queue_size)
             else:
                 data_loader = self.train_loaders_queue[self.train_p_map[cid]]
         else:

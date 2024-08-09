@@ -110,6 +110,7 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
         self.cur_payload = payload
         self.round = cur_round
         model_parameters = payload[0]  
+        mu = payload[1]
 
         self._LOGGER.info(f"Round {self.round} selected clients global id: {self.id_list}")
 
@@ -125,17 +126,18 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
 
             self.on_client_serial_process_start()
             
-            pack = self.train(model_parameters, data_loader)            
+            pack = self.train(model_parameters, data_loader, mu)            
             self.cache.append(pack)
 
             self.on_client_serial_process_end()
 
         self.on_local_process_end()
         
-    def train(self, model_parameters, train_loader):
+    def train(self, model_parameters, train_loader, mu=0.0):
         self.set_model(model_parameters)
         if self.is_prox:
             frz_model = deepcopy(self.model)
+            print(f"mu = {mu}")
         self.setup_optim(self.epochs, self.batch_size, self.lr, self.weight_decay, self.momentum)
         self.model.train()
         
@@ -171,8 +173,8 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
                     loss = self.criterion(outputs, noisy_labels)
 
                 if self.is_prox:
+                    self.call_hook("update", "fedprox_loss_meter", l_cid=self.l_cid, batch_loss=loss.item())
                     l2 = 0.0
-                    mu = 0.1 # todo: automatic adjustment
                     for w0, w in zip(frz_model.parameters(), self.model.parameters()):
                         l2 += torch.sum(torch.pow(w - w0, 2))
                     loss += 0.5 * mu * l2
@@ -199,9 +201,14 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
 
         self.on_client_training_end()
 
+        if self.is_prox:
+            local_loss = self.call_hook("get_loss_avg", "fedprox_loss_meter", l_cid=self.l_cid)
+        else:
+            local_loss = 0.
+
         self._LOGGER.info(
             f"Round {self.round} client-{self.g_cid} local training done."
         )
 
-        local_result = [self.model_parameters, data_size, g_cid] + self.cs_metrics
+        local_result = [self.model_parameters, data_size, local_loss, g_cid] + self.cs_metrics
         return local_result

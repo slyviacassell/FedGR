@@ -76,13 +76,16 @@ class FedAPCSServerHandler(FedAPServerHandler):
         # the self.round increases after global updating
         parameters_list = [elem[0] for elem in buffer]
         weights = [elem[1] for elem in buffer]
-        cid_list = [elem[2].int().item() for elem in buffer]
-        self.recv_metrics = [elem[3].numpy() for elem in buffer]
-        self.recv_guids = [elem[4].numpy() for elem in buffer]
-        self.recv_clean_mask = [elem[5].numpy() for elem in buffer]
+        local_losses = [elem[2] for elem in buffer] # for fedprox adaptive mu scheduler
+        cid_list = [elem[3].int().item() for elem in buffer]
+        self.recv_metrics = [elem[4].numpy() for elem in buffer]
+        self.recv_guids = [elem[5].numpy() for elem in buffer]
+        self.recv_clean_mask = [elem[6].numpy() for elem in buffer]
 
         self.on_global_update_start()
 
+        if self.args.use_fedprox:
+            self.call_hook("step", "fedprox_mu_scheduler", local_losses, weights)
         serialized_parameters = Aggregators.fedavg_aggregate(parameters_list, weights)
         self.set_model(serialized_parameters)
         self._LOGGER.info(
@@ -93,7 +96,11 @@ class FedAPCSServerHandler(FedAPServerHandler):
 
     @property
     def downlink_package(self) -> List[torch.Tensor]:
-        down_pack = [self.model_parameters]
+        if self.args.use_fedprox:
+            mu = self.call_hook("get_mu", "fedprox_mu_scheduler")
+        else:
+            mu = 0.0
+        down_pack = [self.model_parameters, mu]
 
         down_pack = down_pack + [
             torch.from_numpy(self.clean_guids), 

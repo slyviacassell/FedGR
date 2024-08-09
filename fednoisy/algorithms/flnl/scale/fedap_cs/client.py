@@ -70,6 +70,7 @@ from fednoisy.algorithms.flnl.scale.fedap import FedAPClientTrainer
 from fednoisy.algorithms.flnl.hooks import (
     SampleMetricEvalClientHook,
     LabelNoiseMaskOutLossHook,
+    FedProxLocalLossMeterHook,
 )
 
 class FedAPCSClientTrainer(FedAPClientTrainer):
@@ -96,6 +97,9 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
         if self.args.mask_out_loss:
             self.register_hooks(LabelNoiseMaskOutLossHook(), "mask_out_loss","LOWEST")
 
+        if self.args.use_fedprox:
+            self.register_hooks(FedProxLocalLossMeterHook(self.args), "fedprox_loss_meter", "LOWEST")
+
         super(FedAPCSClientTrainer, self).set_hooks()
 
         if type(self) ==  FedAPCSClientTrainer:
@@ -111,6 +115,7 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
         self.cur_payload = payload
         self.round = cur_round.item()
         model_parameters = payload[0]  
+        mu = payload[1]
 
         self.set_global_model(model_parameters)
 
@@ -128,14 +133,14 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
 
             self.on_client_serial_process_start()
             
-            pack = self.train(model_parameters, data_loader)            
+            pack = self.train(model_parameters, data_loader, mu)            
             self.cache.append(pack)
 
             self.on_client_serial_process_end()
 
         self.on_local_process_end()
         
-    def train(self, model_parameters, train_loader):
+    def train(self, model_parameters, train_loader, mu=0.0):
         self.set_model(model_parameters)
         if self.is_prox:
             frz_model = deepcopy(self.model)
@@ -174,8 +179,8 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
                     loss = self.criterion(outputs, noisy_labels)
 
                 if self.is_prox:
+                    self.call_hook("update", "fedprox_loss_meter", self.l_cid, loss.item())
                     l2 = 0.0
-                    mu = 0.1 # todo: automatic adjustment
                     for w0, w in zip(frz_model.parameters(), self.model.parameters()):
                         l2 += torch.sum(torch.pow(w - w0, 2))
                     loss += 0.5 * mu * l2
@@ -202,9 +207,15 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
 
         self.on_client_training_end()
 
+        if self.args.use_fedprox:
+            local_loss = [self.call_hook("get_loss_avg", "fedprox_loss_meter", self.l_cid)]
+        else:
+            local_loss = 0.0
+        local_loss = torch.tensor(local_loss)
+
         self._LOGGER.info(
             f"Round {self.round} client-{self.g_cid} local training done."
         )
 
-        local_result = [self.model_parameters, data_size, g_cid] + self.cs_metrics
+        local_result = [self.model_parameters, data_size, local_loss, g_cid] + self.cs_metrics
         return local_result

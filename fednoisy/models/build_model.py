@@ -6,6 +6,7 @@ from .resnet2 import ResNet20, ResNet32
 from .preresnet import ResNet18 as PreResNet18
 from .wideresnet import WRN28_10, WRN40_2
 from .vgg import VGG11, VGG13, VGG16, VGG19
+from .resnet_gn import ResNet18 as ResNet18GN
 
 from torch import nn
 import torchvision
@@ -66,6 +67,8 @@ def build_model(model_name: str, num_classes: int = 10, dataset: str = "CIFAR10"
         base_model = PreResNet18(num_classes)
     elif model_name == "ResNet18":
         base_model = ResNet18(num_classes)
+    elif model_name == "ResNet18GN":
+        base_model = ResNet18GN(num_classes)
     elif model_name == "ResNet20":
         base_model = ResNet20(num_classes)
     elif model_name == "ResNet32":

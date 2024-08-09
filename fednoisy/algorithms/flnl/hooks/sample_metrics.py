@@ -12,6 +12,7 @@ import wandb
 
 from fednoisy.core.hooks import (
     SerialClientTrainerHook,
+    SyncServerHook,
 )
 
 
@@ -28,7 +29,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         self.sample_metric_container = [{} for _ in range(client_trainer.num_clients)]
 
     def on_local_process_start(self, client_trainer, *args, **kwargs):
-        p = 1
+        p = 2
         client_trainer.overall_clean_guids = client_trainer.cur_payload[p].numpy()
         client_trainer.overall_noisy_guids = client_trainer.cur_payload[p+1].numpy()
         client_trainer.overall_guids = client_trainer.cur_payload[p+2].numpy()
@@ -144,12 +145,12 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
             cnt = sample_metric_container[guid]["cnt"]
 
             # rolling mean and variance
-            x_n_1 = sample_metric_container[guid]["loss_mean"] 
-            x_n = x_n_1 + (d["noisy_loss"] - x_n_1) / (cnt + 1)
+            mean_n_1 = sample_metric_container[guid]["loss_mean"] 
+            mean_n = mean_n_1 + (d["noisy_loss"] - mean_n_1) / (cnt + 1)
             sigma2_n_1 = sample_metric_container[guid]["loss_vari"]
-            sigma2_n = sigma2_n_1 + ((d["noisy_loss"] - x_n_1) * (d["noisy_loss"] - x_n) - sigma2_n_1) / (cnt + 1)
+            sigma2_n = sigma2_n_1 + ((d["noisy_loss"] - mean_n_1) * (d["noisy_loss"] - mean_n) - sigma2_n_1) / (cnt + 1)
             
-            sample_metric_container[guid]["loss_mean"] = x_n
+            sample_metric_container[guid]["loss_mean"] = mean_n
             sample_metric_container[guid]["loss_vari"] = sigma2_n
             
             sample_metric_container[guid]["loss_soft_mean"] = (sample_metric_container[guid]["loss_soft_mean"] * cnt + scaling(d["noisy_loss"])) / (cnt + 1)
@@ -178,7 +179,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         return df
     
 
-class SampleMetricEvalServerHook(SerialClientTrainerHook):
+class SampleMetricEvalServerHook(SyncServerHook):
     def __init__(self) -> None:
         super().__init__()
 

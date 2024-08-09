@@ -127,9 +127,13 @@ class SerialClientTrainerHook(Hook):
 
 class SyncServerHook(Hook):
     stages = (
+        'on_init',
         'on_global_update_start',
         'on_global_update_end',
     )
+
+    def on_init(self, algorithm, *args, **kwargs):
+        pass
 
     # hook entries
     def on_global_update_start(self, algorithm, *args, **kwargs):
