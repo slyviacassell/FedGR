@@ -134,6 +134,9 @@ class EvaluateTrainHook(SerialClientTrainerHook):
         loss_fn = nn.CrossEntropyLoss()
         multimodel = hasattr(model, "models")
         eval_res = self.eval_train(model, eval_train_dataloader, loss_fn, device, multimodel)
+
+        n_discrepancy = trainer.dataset.get_noisy_discrepancy(trainer.g_cid)
+
         trainer._LOGGER.info(
             f"Round {trainer.round} client-{trainer.g_cid} eval train, {log}, "
             f"acc: {eval_res['acc']*100:.2f}% (c: {eval_res['clean2overall_acc']*100:.2f}%, n: {eval_res['noisy2overall_clean_acc']*100:.2f}%), "
@@ -142,7 +145,9 @@ class EvaluateTrainHook(SerialClientTrainerHook):
             f"loss: {eval_res['loss']:.4f}, "
             f"c_loss: {eval_res['clean_loss']:.4f}, "
             f"n_loss: {eval_res['noisy_loss']:.4f}, "
-            f"noise_rate: {eval_res['noise_ratio']*100:.2f}%"
+            f"noise_rate: {eval_res['noise_ratio']*100:.2f}%, "
+            f"entropy: {eval_res['entropy']:.4f}, "
+            f"n_discrepancy: {n_discrepancy:.4f}, "
         )
         if trainer.wandb_logger is not None:
             logs = {
@@ -175,6 +180,8 @@ class EvaluateTrainHook(SerialClientTrainerHook):
         noisy2overall_clean_acc_ = AverageMeter()
         noise_ratio_ = AverageMeter()
 
+        entropy_ = AverageMeter()
+
         with torch.no_grad():
             for batch in dataloader:
                 inputs, labels, noisy_labels = batch["img"], batch["label"], batch["noisy_label"]
@@ -190,10 +197,15 @@ class EvaluateTrainHook(SerialClientTrainerHook):
                     outputs = torch.sum(torch.stack(outputs), dim=0)
 
                 _, predicted = torch.max(outputs, 1)
+
+                entropy = TF.softmax(outputs, dim=1) * TF.log_softmax(outputs, dim=1)
+                entropy = -1.0 * entropy.sum(dim=1)
+                entropy = entropy.mean()
                 
                 clean_loss = loss_fn(outputs, labels)
                 loss_.update(clean_loss.item(), batch_size)
                 acc_.update(torch.sum(predicted.eq(labels)).item() / batch_size, batch_size)
+                entropy_.update(entropy.item(), batch_size)
 
                 if torch.sum(is_clean) != 0:
                     clean_set_loss = loss_fn(outputs[is_clean], labels[is_clean])
@@ -219,6 +231,7 @@ class EvaluateTrainHook(SerialClientTrainerHook):
             "clean2overall_acc": clean2overall_acc_.avg,
             "noisy2overall_clean_acc": noisy2overall_clean_acc_.avg, # for pseudo label
             "noise_ratio": noise_ratio_.avg,
+            "entropy": entropy_.avg
         }
 
 

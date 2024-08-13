@@ -64,6 +64,7 @@ class FedNLLDataset(FedDataset):
             print(f"Test datasets preloaded.")
 
         self.num = TRAIN_SAMPLE_NUM[args.dataset]
+        self.dataset_name = args.dataset
         self.test_loader = None
 
         self.loader_cache = True
@@ -172,6 +173,23 @@ class FedNLLDataset(FedDataset):
             pin_memory=True,
         )
         return data_loader
+    
+    def get_noisy_discrepancy(self, cid=None):
+        dataset = self.get_dataset(cid)
+        label_distri = np.bincount(dataset.noisy_labels, minlength=CLASS_NUM[self.dataset_name])
+        label_distri = label_distri / np.sum(label_distri) + 1e-8
+        ideal_distri = np.ones(CLASS_NUM[self.dataset_name]) / CLASS_NUM[self.dataset_name]
+        
+        # js div
+        # kl1 = (ideal_distri * (np.log(ideal_distri) - np.log((label_distri+ideal_distri)/2))).sum()
+        # kl2 = (label_distri * (np.log(label_distri) - np.log((label_distri+ideal_distri)/2))).sum()
+        # js_div = (kl1 + kl2) / 2
+        # return js_div
+
+        # kl div
+        kl = (label_distri * (np.log(label_distri) - np.log(ideal_distri))).sum()
+        return kl
+
 
     def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, sample_prob: Dict=None):
         if train:

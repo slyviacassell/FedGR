@@ -67,13 +67,14 @@ from fednoisy.core.hooks import (
 )
 
 from fednoisy.algorithms.flnl.standalone.fedap import FedAPClientTrainer
+from fednoisy.algorithms.flnl.standalone.fedap_cs import FedAPCSClientTrainer
 from fednoisy.algorithms.flnl.hooks import (
     SampleMetricEvalClientHook,
     LabelNoiseMaskOutLoss,
-    LabelNoiseOrcaleMaskOutLoss,
+    NaivePseudoLabelLoss,
 )
 
-class FedAPCSClientTrainer(FedAPClientTrainer):
+class FedAPCSSemiClientTrainer(FedAPCSClientTrainer):
     def __init__(
         self,
         model,
@@ -87,20 +88,17 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
     ) -> None:
         # custom attributes
 
-        super(FedAPCSClientTrainer, self).__init__(
+        super(FedAPCSSemiClientTrainer, self).__init__(
             model, num_clients, cuda, device, logger, wandb_logger, personal, args
         )
 
     def set_hooks(self):
-        self.register_hooks(SampleMetricEvalClientHook(), None, "LOWEST")
+        if self.args.loss == "naive_pseudo_label_loss":
+            self.register_hooks(NaivePseudoLabelLoss(num_clients=self.num_clients), "loss", "LOWEST")
 
-        if self.args.loss == "mask_out_loss":
-            self.register_hooks(LabelNoiseMaskOutLoss(), "loss", "LOWEST")
-            # self.register_hooks(LabelNoiseOrcaleMaskOutloss(), "loss","LOWEST")
+        super(FedAPCSSemiClientTrainer, self).set_hooks()
 
-        super(FedAPCSClientTrainer, self).set_hooks()
-
-        if type(self) ==  FedAPCSClientTrainer:
+        if type(self) ==  FedAPCSSemiClientTrainer:
             self._LOGGER.info(
                 f"Client Registered hooks: {self.hooks_dict.keys()}"
             )
@@ -169,9 +167,9 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
 
                 outputs = self.model(imgs)
                 if self.hooks_dict.get("loss", None) is not None:
-                    # mask = labels.to(self.device) == noisy_labels # for oracle mask out loss
-                    # loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids, mask=mask)
-                    loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids)
+                    loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids, inputs=imgs, gt=labels)
+                    if isinstance(loss, float):
+                        continue
                 else:
                     loss = self.criterion(outputs, noisy_labels)
 

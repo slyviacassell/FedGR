@@ -133,6 +133,7 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
             mu = 0.0
         return [self.model_parameters, mu]
     
+    # fixme: unnormal shutdown
     # def sample_clients(self):        
     #     if self.num_clients_per_round < self.num_clients:
     #         # random sample the clients without replacements

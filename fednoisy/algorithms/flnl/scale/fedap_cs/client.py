@@ -69,7 +69,7 @@ from fednoisy.core.hooks import (
 from fednoisy.algorithms.flnl.scale.fedap import FedAPClientTrainer
 from fednoisy.algorithms.flnl.hooks import (
     SampleMetricEvalClientHook,
-    LabelNoiseMaskOutLossHook,
+    LabelNoiseMaskOutLoss,
     FedProxLocalLossMeterHook,
 )
 
@@ -94,8 +94,8 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
     def set_hooks(self):
         self.register_hooks(SampleMetricEvalClientHook(), None, "LOWEST")
 
-        if self.args.mask_out_loss:
-            self.register_hooks(LabelNoiseMaskOutLossHook(), "mask_out_loss","LOWEST")
+        if self.args.loss == "mask_out_loss":
+            self.register_hooks(LabelNoiseMaskOutLoss(), "loss","LOWEST")
 
         if self.args.use_fedprox:
             self.register_hooks(FedProxLocalLossMeterHook(self.args), "fedprox_loss_meter", "LOWEST")
@@ -173,8 +173,8 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
                     noisy_labels = noisy_labels.to(self.device)
 
                 outputs = self.model(imgs)
-                if self.hooks_dict.get("mask_out_loss", None) is not None:
-                    loss = self.call_hook("loss", "mask_out_loss", outputs, noisy_labels, guids=guids)
+                if self.hooks_dict.get("loss", None) is not None:
+                    loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids)
                 else:
                     loss = self.criterion(outputs, noisy_labels)
 

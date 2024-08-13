@@ -183,7 +183,6 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         self.set_model(model_parameters)
         if self.is_prox:
             frz_model = deepcopy(self.model)
-            print(f"mu = {mu}")
         self.setup_optim(self.epochs, self.batch_size, self.lr, self.weight_decay, self.momentum)
         self.model.train()
         

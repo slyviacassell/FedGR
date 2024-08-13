@@ -33,6 +33,10 @@ from fednoisy.algorithms.flnl.standalone.fedap_cs import (
     FedAPCSClientTrainer,
     FedAPCSServerHandler,
 )
+from fednoisy.algorithms.flnl.standalone.fedap_cs_semi import (
+    FedAPCSSemiClientTrainer,
+    FedAPCSSemiServerHandler,
+)
 
 
 from fednoisy.algorithms.flnl.misc import read_fednll_args
@@ -97,6 +101,10 @@ if args.use_cs:
     handler = FedAPCSServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
     ) # server
+elif args.use_cs_semi:
+    handler = FedAPCSSemiServerHandler(
+        model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
+    ) # server
 else:
     handler = FedAPServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
@@ -105,6 +113,10 @@ else:
 # ---- FedAvg & FedAvg-RobustLoss ----
 if args.use_cs:
     trainer = FedAPCSClientTrainer(
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
+    ) # client
+elif args.use_cs_semi:
+    trainer = FedAPCSSemiClientTrainer(
         model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     ) # client
 else:

@@ -524,11 +524,7 @@ def get_dynamics(model, criterion, dataset, data_loader, comm_round, device, mul
                 # sum over outputs of all nets
                 outputs = torch.sum(torch.stack(outputs), dim=0)
             
-            if isinstance(criterion,VolMinLoss):
-                # todo
-                pass
-            else:
-                loss = criterion(outputs, labels) # per-sample loss
+            loss = criterion(outputs, labels) # per-sample loss
 
             _, predicted = torch.max(outputs, 1)
 
@@ -846,7 +842,7 @@ def result_parser(result_path):
     setting_dict = ast.literal_eval(lines[0].strip())
     return accs, losses, setting_dict
 
-def js_div(ideal_distri:torch.Tensor,label_distri:torch.Tensor):
+def js_div(ideal_distri:torch.Tensor, label_distri:torch.Tensor):
     kl1 = (ideal_distri * (ideal_distri.log() - ((label_distri+ideal_distri)/2).log())).sum()
     kl2 = (label_distri * (label_distri.log() - ((label_distri+ideal_distri)/2).log())).sum()
     js=(kl1+kl2)/2

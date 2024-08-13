@@ -61,6 +61,10 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
             cs_metrics = sample_metrics["loss_mean"].to_numpy()
         elif client_trainer.args.cs_metric == "loss_soft_mean":
             cs_metrics = sample_metrics["loss_soft_mean"].to_numpy()
+        elif client_trainer.args.cs_metric == "sc":
+            cs_metrics = sample_metrics["smoothed_correctness"].to_numpy()
+        elif client_trainer.args.cs_metric == "scl":
+            cs_metrics = sample_metrics["smoothed_correctness_loss"].to_numpy()
 
         guids = torch.from_numpy(guids)
         clean_mask = torch.from_numpy(clean_mask)
@@ -115,7 +119,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
     
     def sample_metrics_processing(self, sample_dynamics, cid, round) -> pd.DataFrame:
         def scaling(x):
-                return (1. + x + x**2/2)
+            return (1. + x + x**2/2)
 
         sample_metric_container = self.sample_metric_container[cid]
         for guid,d in sample_dynamics.items():
@@ -127,8 +131,9 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "noisy_label": d["noisy_label"],
                     "prediction": d["prediction"],
 
-                    "cur_round": round,
-                    "perv_round": round,
+                    "accumulated_correctnes": 0,
+                    "cur_correctness": 0,
+                    "smoothed_correctness": 0,
 
                     "loss_mean": 0,
                     "loss_vari": 0,
@@ -136,13 +141,10 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
 
                     "cnt": 0,
                 }
-            
-            sample_metric_container[guid]["prev_round"] = sample_metric_container[guid]["cur_round"]
-            sample_metric_container[guid]["cur_round"] = round
-
-            sample_metric_container[guid]["loss"] = d["noisy_loss"]
 
             cnt = sample_metric_container[guid]["cnt"]
+            
+            sample_metric_container[guid]["loss"] = d["noisy_loss"]
 
             # rolling mean and variance
             mean_n_1 = sample_metric_container[guid]["loss_mean"] 
@@ -154,6 +156,12 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
             sample_metric_container[guid]["loss_vari"] = sigma2_n
             
             sample_metric_container[guid]["loss_soft_mean"] = (sample_metric_container[guid]["loss_soft_mean"] * cnt + scaling(d["noisy_loss"])) / (cnt + 1)
+            
+            sample_metric_container[guid]["accumulated_correctnes"] += d["correctness"]
+            sample_metric_container[guid]["cur_correctness"] = d["correctness"]
+
+            sample_metric_container[guid]["smoothed_correctness"] = math.e**(-(float(d["correctness"]) + sample_metric_container[guid]["accumulated_correctnes"]/(cnt+1+1e-8)))
+            sample_metric_container[guid]["smoothed_correctness_loss"] = sample_metric_container[guid]["smoothed_correctness"] + sample_metric_container[guid]["loss_mean"]
 
             sample_metric_container[guid]["cnt"] += 1
 
@@ -165,6 +173,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                         m["is_clean"],
                         m["loss_mean"],
                         m["loss_soft_mean"],
+                        m["smoothed_correctness"],
+                        m["smoothed_correctness_loss"],
                     ] for g,m in sample_metric_container.items()
                 ],
                 columns=[
@@ -173,6 +183,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "is_clean",
                     "loss_mean",
                     "loss_soft_mean",
+                    "smoothed_correctness",
+                    "smoothed_correctness_loss",
                 ]
             )
 
@@ -215,21 +227,23 @@ class SampleMetricEvalServerHook(SyncServerHook):
         df = self.metric_dict2df(server_handler.metrics_container)
         df["metric"] = df["metric_raw"] 
 
-        df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= 5)
+        window_sz = 5
+        df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= window_sz)
         gmm_metrics = df[(df["selected"] == True)]["metric"].to_numpy()
         gmm_y_true = df[(df["selected"] == True)]["is_clean"].to_numpy()
-        
+        gmm_guids = df[(df["selected"] == True)]["guid"].to_numpy()
+
         y_pred, probs = self.gmm(gmm_metrics)
 
         server_handler._LOGGER.info(
-            f"Round [{server_handler.round}/{server_handler.global_round}] server sieving, "
+            f"Round [{server_handler.round}/{server_handler.global_round}] {window_sz} window cs, "
             f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
             f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.4f}%, "
             f"recall: {recall_score(gmm_y_true,y_pred)*100:.4f}%, "
             f"percision: {precision_score(gmm_y_true,y_pred)*100:.4f}%, "
             f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.4f}%"
         )
-
+        
         if server_handler.wandb_logger is not None:
             server_handler.wandb_logger.run.log(
                 {
@@ -249,20 +263,54 @@ class SampleMetricEvalServerHook(SyncServerHook):
             server_handler.wandb_logger.run.log({f"{server_handler.args.cs_metric} gmm": wandb.Image(fig)}, commit=False)
             plt.close(fig)
 
-        gmm_guids = df[(df["selected"] == True)]["guid"].to_numpy()
-
         self.sample_selection(server_handler.metrics_container, gmm_guids, y_pred)
-        selected_df = self.get_selected_df(server_handler.metrics_container)
-        clean_guids = selected_df[selected_df["selected"] == True]["guid"].to_numpy()
-        noisy_guids = selected_df[selected_df["selected"] == False]["guid"].to_numpy()
-        gmm_guids = selected_df["guid"].to_numpy()
+        filtered_df = self.get_filtered_df(server_handler.metrics_container)
+        clean_guids = filtered_df[filtered_df["filtered"] == True]["guid"].to_numpy()
+        noisy_guids = filtered_df[filtered_df["filtered"] == False]["guid"].to_numpy()
+        gmm_guids = filtered_df["guid"].to_numpy()
+
+        y_pred = filtered_df["filtered"].to_numpy()
+        y_true = filtered_df["is_clean"].to_numpy()
+        server_handler._LOGGER.info(
+            f"Round [{server_handler.round}/{server_handler.global_round}] filtered samples, "
+            f"recall: {recall_score(y_true,y_pred)*100:.4f}%, "
+            f"percision: {precision_score(y_true,y_pred)*100:.4f}%, "
+            f"f1_score: {f1_score(y_true,y_pred)*100:.4f}%"
+        )
+
+        # gmm_test = df[(df["uploaded_round"] == server_handler.round)]["metric"].to_numpy()
+        # gmm_y_true = df[(df["uploaded_round"] == server_handler.round)]["is_clean"].to_numpy()
+        # y_pred, probs = self.gmm(gmm_metrics, gmm_test)
+
+        # server_handler._LOGGER.info(
+        #     f"Peer Round [{server_handler.round}/{server_handler.global_round}] server sieving, "
+        #     f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
+        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.4f}%, "
+        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.4f}%, "
+        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.4f}%, "
+        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.4f}%"
+        # )
+
+        # y_pred, probs = self.gmm(gmm_test)
+
+        # server_handler._LOGGER.info(
+        #     f"Self Round [{server_handler.round}/{server_handler.global_round}] server sieving, "
+        #     f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
+        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.4f}%, "
+        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.4f}%, "
+        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.4f}%, "
+        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.4f}%"
+        # )
 
         return clean_guids, noisy_guids, gmm_guids
     
-    def gmm(self, gmm_input):
+    def gmm(self, gmm_input, gmm_test=None):
         gmm = GaussianMixture(n_components=2,max_iter=50,tol=1e-2,reg_covar=5e-4)
         gmm.fit(gmm_input.reshape((-1, 1)))
-        probs = gmm.predict_proba(gmm_input.reshape((-1, 1)))
+        if gmm_test is not None:
+            probs = gmm.predict_proba(gmm_test.reshape((-1, 1)))
+        else:
+            probs = gmm.predict_proba(gmm_input.reshape((-1, 1)))
         #print("prob1=", prob)
         #print("gmm.means_.argmin()=", gmm.means_.argmin())
         probs = probs[:,gmm.means_.argmin()] #属于小loss的概率是多少 获得的是真实无噪声样本的概率是多少 该样本无噪声的概率是多少
@@ -272,7 +320,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
     def sample_selection(self, metrics_container, guids, pred):
         for g, p in zip(guids, pred):
             if g in metrics_container:
-                metrics_container[g]["selected"] = p
+                metrics_container[g]["filtered"] = p
     
     def update_server_metrics(self, guids, recv_metrics, server_metrics_container, clean_mask, round):
         for guid, metric, is_clean in zip(guids, recv_metrics, clean_mask):
@@ -281,7 +329,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
                     "metric_raw": metric,
                     "is_clean": is_clean, # for debugging
                     "uploaded_round": round,
-                    "selected": True,
+                    "filtered": True,
                 }
             else:
                 server_metrics_container[guid]["metric_raw"] = metric
@@ -305,17 +353,19 @@ class SampleMetricEvalServerHook(SyncServerHook):
             ]
         )
     
-    def get_selected_df(self, metrics_container):
+    def get_filtered_df(self, metrics_container):
         return pd.DataFrame(
             [
                 [
                     guid, 
-                    m["selected"], 
+                    m["filtered"], 
+                    m["is_clean"],
                 ] for guid, m in metrics_container.items()
             ],
             columns=[
                 "guid", 
-                "selected", 
+                "filtered", 
+                "is_clean",
             ]
         )
     

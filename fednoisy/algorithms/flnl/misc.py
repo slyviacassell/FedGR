@@ -79,13 +79,16 @@ def read_fednll_args():
         "--use_cs", action="store_true", help="Whether to use CS model."
     )
     parser.add_argument(
-        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean"], default="loss"
+        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl"], default="loss"
     )
     parser.add_argument(
         "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
     )
     parser.add_argument(
-        "--mask_out_loss", action="store_true", help="Whether to use MaskOut loss."
+        "--loss", choices=['mask_out_loss', "naive_pseudo_label_loss"], help="Which loss to use for cs."
+    )
+    parser.add_argument(
+        "--use_cs_semi", action="store_true", help="Whether to use CS Semi model."
     )
     
     # todo
