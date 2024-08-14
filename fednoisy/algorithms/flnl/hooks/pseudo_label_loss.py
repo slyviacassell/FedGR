@@ -39,6 +39,7 @@ class NaivePseudoLabelLoss(SerialClientTrainerHook):
                 guids = batch["guid"]
                 inputs = inputs.to(client_trainer.device)
                 outputs = p_model(inputs)
+                outputs = TF.softmax(outputs, dim=1)
                 max_prob, max_idx = torch.max(outputs, dim=1)
                 mask = max_prob > 0.95
                 for i in range(len(guids)):
@@ -84,7 +85,7 @@ class NaivePseudoLabelLoss(SerialClientTrainerHook):
     def on_client_training_end(self, client_trainer, *args, **kwargs):
         if client_trainer.round >= client_trainer.args.warmup_round:
             client_trainer._LOGGER.info(
-                f"Round {client_trainer.round} client-{client_trainer.g_cid} pseudo label acc: {self.pseudo_label_monitors[client_trainer.l_cid].avg*100:.4f}%"
+                f"Round {client_trainer.round} client-{client_trainer.g_cid} pseudo label acc: {self.pseudo_label_monitors[client_trainer.l_cid].avg*100:.2f}%, pseudo label count: {self.pseudo_label_monitors[client_trainer.l_cid].count:.2f}"
             )
 
             self.pseudo_label_monitors[client_trainer.l_cid].reset()
