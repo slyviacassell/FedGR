@@ -64,14 +64,27 @@ from fednoisy.core.hooks import (
     ClientGradClipHook,
     SerialClientLocalEMAHook,
     GlobalGradNormMonitorHook,
-    LocalMixupHook,
+    SerialClientLocalEMAHook,
 )
+
+from fednoisy.algorithms.flnl.standalone.fedap import FedAPClientTrainer
 from fednoisy.algorithms.flnl.hooks import (
-    FedProxLocalLossMeterHook,
+    SampleMetricEvalClientHook,
+    LabelNoiseMaskOutLoss,
+    LabelNoiseOrcaleMaskOutLoss,
+    LabelNoiseTruncationLoss,
+    LabelNoiseWeight,
+    ClientLabelDistriEMA,
 )
+from fednoisy.algorithms.flnl.standalone.fedap_orchestra.hooks import (
+    GlobalOrchestra,
+    LocalOrchestra,
+    SupOrchestraLoss,
+)
+from torch.profiler import profile, record_function, ProfilerActivity
 
 
-class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
+class FedAPOrchestraClientTrainer(FedAPClientTrainer):
     def __init__(
         self,
         model,
@@ -83,75 +96,26 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         personal=False,
         args=None,
     ) -> None:
-        SGDSerialClientTrainer.__init__(
-            self, model, num_clients, cuda, device, logger, personal,
+        # custom attributes
+
+        super(FedAPOrchestraClientTrainer, self).__init__(
+            model, num_clients, cuda, device, logger, wandb_logger, personal, args
         )
-        SerialClientAlogrithmBase.__init__(self)
-        self.cache = []
-        self.args = args
-        self.wandb_logger = wandb_logger
-
-        self.cur_global_model = deepcopy(self._model)
-
-        self.cur_payload = None  
-
-        self.is_prox = self.args.use_fedprox
-        
-        self.set_hooks() 
-
-        self.on_init()
 
     def set_hooks(self):
-        self.register_hooks(TestHook(test_interval=5), None, "LOWEST")
-        self.register_hooks(EvaluateTrainHook(model=self.model, log_annotation="local", eval_interval=5), "local_eval", "LOWEST")
-        self.register_hooks(EvaluateTrainHook(model=self.cur_global_model, log_annotation="global", eval_interval=5), "global_eval", "LOWEST")
-        if self.args.grad_clip:
-            self.register_hooks(ClientGradClipHook(clip_grad_norm=self.args.clip_grad_norm), None, "LOWEST")
-        if self.args.use_fedprox:
-            self.register_hooks(FedProxLocalLossMeterHook(args=self.args), "fedprox_loss_meter", "LOWEST")
-        if self.args.use_local_mixup:
-            self.register_hooks(LocalMixupHook(self.args.mixup_alpha), "mixup", "LOWEST")
-            
-        if type(self) == FedAPClientTrainer:
+        self.register_hooks(SampleMetricEvalClientHook(), None, "LOWEST")
+
+        self.register_hooks(SerialClientLocalEMAHook(), None, "LOWEST")
+
+        self.register_hooks(LocalOrchestra(), "local_orchestra", "LOWEST")
+        self.register_hooks(SupOrchestraLoss(), "loss", "LOWEST")
+
+        super(FedAPOrchestraClientTrainer, self).set_hooks()
+
+        if type(self) ==  FedAPOrchestraClientTrainer:
             self._LOGGER.info(
                 f"Client Registered hooks: {self.hooks_dict.keys()}"
             )
-
-    @property
-    def model_parameters(self) -> torch.Tensor:
-        return misc.serialize_model(self._model)
-
-    def set_model(self, parameters: torch.Tensor):
-        misc.deserialize_model(self._model, parameters)
-
-    def set_global_model(self, parameters: torch.Tensor):
-        misc.deserialize_model(self.cur_global_model, parameters)
-
-    def setup_optim(self, epochs, batch_size, lr, weight_decay, momentum):
-        self.epochs = epochs
-        self.lr = lr
-        self.batch_size = batch_size
-        self.momentum = momentum
-        self.weight_decay = weight_decay
-        self.optimizer = torch.optim.SGD(
-            self._model.parameters(), lr, weight_decay=weight_decay, momentum=momentum
-        )
-        self.criterion = get_robust_loss(CLASS_NUM[self.args.dataset], self.args)
-    
-        # used for initialization for lr_scheduler
-        for group in self.optimizer.param_groups:
-            group.setdefault('initial_lr', group['lr'])
-        self.lr_scheduler=get_lr_scheduler(args=self.args,optimizer=self.optimizer,last_epoch=(self.round - 1) if hasattr(self,"round") else -1)
-    
-    def set_global_cid(self, local_id_list, rank):
-        global_id_list = local_id_list + (rank - 1) * self.num_clients
-        self.global_id_list = global_id_list.tolist()
-
-    @property
-    def uplink_package(self):
-        package = deepcopy(self.cache)
-        self.cache = []
-        return package
 
     def local_process(self, payload, id_list, cur_round):
         self.id_list = id_list
@@ -172,7 +136,7 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         for cid in self.id_list:
             self.g_cid = cid
             self.l_cid = cid
-            data_loader = self.dataset.get_dataloader(cid=self.g_cid, train=True, batch_size=self.batch_size)
+            data_loader = self.dataset.get_semiws_dataloader(cid=self.g_cid, train=True, batch_size=self.batch_size)
 
             self.on_client_serial_process_start()
             
@@ -191,7 +155,12 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         self.model.train()
         
         data_size = len(train_loader.dataset)
-        data_size = torch.tensor(data_size)
+        if self.hooks_dict.get("weight_adjustment", None) is not None:
+            weight = self.call_hook("adjust_weight", "weight_adjustment", data_size)
+        else:
+            weight = data_size
+        
+        weight = torch.tensor(weight)
         g_cid = torch.tensor(self.g_cid)
 
         self.on_client_training_start()
@@ -210,16 +179,24 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
             for batch in train_loader:
                 self.on_training_batch_start()
                 
-                imgs, labels, noisy_labels, guids = batch["img"], batch["label"], batch["noisy_label"], batch["guid"]
+                imgs_w, imgs_s, labels, noisy_labels, guids = batch["img_w"], batch["img_s"], batch["label"], batch["noisy_label"], batch["guid"]
                 if self.cuda:
-                    imgs = imgs.to(self.device)
+                    imgs_w = imgs_w.to(self.device)
+                    imgs_s = imgs_s.to(self.device)
                     noisy_labels = noisy_labels.to(self.device)
 
-                if self.args.use_local_mixup:
-                    imgs, noisy_labels = self.call_hook("mixup", "mixup", inputs=imgs, targets=noisy_labels)
+                if self.args.use_local_mixup: # fixme
+                    assert self.args.criterion == "softce"
+                    imgs_w, noisy_labels = self.call_hook("mixup", "mixup", inputs=imgs_w, targets=noisy_labels)
 
-                outputs = self.model(imgs)
-                loss = self.criterion(outputs, noisy_labels)
+                outputs_s = self.model(imgs_s, return_dict=True, full_heads=True)
+                outputs_s["orchestra_head"] = self.global_centroids(TF.normalize(outputs_s["orchestra_head"], dim=1))
+
+                q = self.call_hook("get_assignment_and_ema_update", "local_orchestra", inputs=imgs_w, targets=noisy_labels)
+
+                targets = {"linear_head": noisy_labels, "orchestra_head": q}
+
+                loss = self.call_hook("loss", "loss", outputs_s, targets, guids=guids, labels=labels)
 
                 if self.is_prox:
                     self.call_hook("update", "fedprox_loss_meter", l_cid=self.l_cid, batch_loss=loss.item())
@@ -259,5 +236,5 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
             f"Round {self.round} client-{self.g_cid} local training done."
         )
 
-        local_result = [self.model_parameters, data_size, local_loss, g_cid]
+        local_result = [self.model_parameters, weight, local_loss, g_cid] + self.cs_metrics + self.local_centroids
         return local_result

@@ -12,6 +12,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 import torchvision
 import torchvision.transforms as transforms
+import pandas as pd
 
 from fedlab.contrib.algorithm.basic_client import SGDSerialClientTrainer
 from fedlab.core.client import PassiveClientManager
@@ -56,6 +57,7 @@ class FedNLLDataset(FedDataset):
                 self.train_datasets[cid] = torch.load(
                     os.path.join(self.nll_folder, f"train-data{cid}.pkl")
                 )
+                self.train_datasets[cid].legacy_noisy_labels = deepcopy(self.train_datasets[cid].noisy_labels)
             print(f"Client train datasets preloaded.")
         if test_preload:
             self.test_dataset = torch.load(
@@ -67,7 +69,7 @@ class FedNLLDataset(FedDataset):
         self.dataset_name = args.dataset
         self.test_loader = None
 
-        self.loader_cache = True
+        self.loader_cache = False
         self.train_queue_size = 20
         self.train_p = 0 # queue pointer
         self.train_p_map = {}
@@ -189,7 +191,19 @@ class FedNLLDataset(FedDataset):
         # kl div
         kl = (label_distri * (np.log(label_distri) - np.log(ideal_distri))).sum()
         return kl
-
+    
+    # def update_labels(self, p_labels: pd.DataFrame, noisy_guids: np.ndarray):
+    #     for cid,d in self.train_datasets.items():
+    #         for i, guid in enumerate(d.guids):
+    #             if guid in noisy_guids:
+    #                 d.noisy_labels[i] = p_labels.loc[guid]["freqent_pred"]
+    #         c_mask = np.array(d.legacy_noisy_labels) == np.array(d.labels)
+    #         pc_mask = np.array(d.noisy_labels) == np.array(d.labels)
+    #         print(
+    #             f"update Client-{cid} {c_mask.sum() / len(c_mask)*100:.2f}% -> {pc_mask.sum() / len(pc_mask)*100:.2f}% "
+    #             f"({pc_mask[c_mask].sum() / len(pc_mask)*100:.2f}%, {pc_mask[~c_mask].sum() / len(pc_mask)*100:.2f}%)"
+    
+    #         )
 
     def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, sample_prob: Dict=None):
         if train:
@@ -210,51 +224,19 @@ class FedNLLDataset(FedDataset):
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
-            # pin_memory=True, # memory leak for fedlab scale
+            pin_memory=True, 
             persistent_workers=True,
         )
         return data_loader
-
-        # if self.dividemix_loaders[cid] is None: # speedup data loader init, more memory usage
-        #     dataset = self.get_dataset(cid, train)
-        #     dataset = DivideMixFedNLLDataset(dataset)
-
-        #     if selected_guid is not None and sample_prob is not None:
-        #         dataset.update(selected_guid,sample_prob)
-
-        #     if len(dataset) == 0:
-        #         print('f@cked',selected_guid)
-
-        #     data_loader = DataLoader(
-        #         dataset,
-        #         batch_size=batch_size,
-        #         shuffle=True,
-        #         num_workers=num_workers,
-        #         pin_memory=True,
-        #         # persistent_workers=True,
-        #     )
-        #     self.dividemix_loaders[cid] = data_loader
-        # else:
-        #     data_loader = self.dividemix_loaders[cid]
-        #     # replace the dataset
-        #     dataset = data_loader.dataset
-
-        #     if selected_guid is not None and sample_prob is not None:
-        #         dataset.update(selected_guid,sample_prob)
-
-        #     if len(dataset) == 0:
-        #         print('f@cked',selected_guid)
-        
-        # return data_loader
     
-    def get_semiws_dataloader(self, dataset_name,cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, prob_dict: Dict=None):
+    def get_semiws_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, prob_dict: Dict=None):
         if train:
             shuffle = True
         else:
             shuffle = False
 
         dataset = self.get_dataset(cid, train)
-        dataset = SemiWSFedNLLDataset(dataset_name,dataset)
+        dataset = SemiWSFedNLLDataset(self.dataset_name,dataset)
         if selected_guid is not None:
             dataset.update(selected_guid, prob_dict)
 
@@ -277,6 +259,7 @@ class DivideMixFedNLLDataset(Dataset):
         super().__init__()
         self.dataset = dataset
         self.aug_times = aug_times
+        self.pseudo_labels = None
         self.sample_reset()
 
     def __getitem__(self, index: Any) -> Any:
@@ -333,8 +316,6 @@ class DivideMixFedNLLDataset(Dataset):
         self.labels = [self.dataset.labels[i] for i in selected_idx]
         if pseudo_labels is not None:
             self.pseudo_labels = [pseudo_labels[guid] for guid in self.guids]
-        else:
-            self.pseudo_labels = None
 
         if sample_weight is not None:
             self.sample_weight = np.array([sample_weight[guid] for guid in self.guids])
@@ -359,6 +340,7 @@ class SemiWSFedNLLDataset(DivideMixFedNLLDataset):
         super().__init__(dataset, aug_times)
         self.weak_transform = self.dataset.transform
         self.strong_transform = TRAIN_TRANSFORM_STRONG[dataset_name]
+        self.pseudo_labels = None
 
     def __getitem__(self, index: Any) -> Any:
         if self.dataset.folder_data is False:
@@ -412,8 +394,6 @@ class SemiWSFedNLLDataset(DivideMixFedNLLDataset):
         self.labels = [self.dataset.labels[i] for i in selected_idx]
         if pseudo_labels is not None:
             self.pseudo_labels = [pseudo_labels[guid] for guid in self.guids]
-        else:
-            self.pseudo_labels = None
         
         if sample_weight is not None:
             self.sample_weight = np.array([sample_weight[guid] for guid in self.guids])

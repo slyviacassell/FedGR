@@ -102,13 +102,13 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                 pred_vec = torch.softmax(outputs,dim=-1)
                 pred_confi = torch.gather(pred_vec, dim=-1, index=noisy_labels.view(-1,1))
                 pred_corr = preds.eq(noisy_labels).cpu()
-                for guid,p_c,i_c,c_loss,n_loss,p_c,c_y,n_y,pred,p_v in zip(guids,pred_corr,is_clean,clean_loss,noisy_loss,pred_confi,labels,noisy_labels,preds,pred_vec):
+                for guid,p_c,i_c,c_loss,n_loss,p_confi,c_y,n_y,pred,p_v in zip(guids,pred_corr,is_clean,clean_loss,noisy_loss,pred_confi,labels,noisy_labels,preds,pred_vec):
                     sample_dynamics[guid.item()] = {
                         "correctness":p_c.item(),
                         "is_clean": i_c.item(),
                         "clean_loss": c_loss.item(),
                         "noisy_loss": n_loss.item(),
-                        "confidence": p_c.item(),
+                        "confidence": p_confi.item(),
                         "label": c_y.item(),
                         "noisy_label": n_y.item(),
                         "pred": pred.item(),
@@ -129,7 +129,6 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "is_clean": d["is_clean"],
                     "label": d["label"],
                     "noisy_label": d["noisy_label"],
-                    "prediction": d["prediction"],
 
                     "accumulated_correctnes": 0,
                     "cur_correctness": 0,
@@ -138,6 +137,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "loss_mean": 0,
                     "loss_vari": 0,
                     "loss_soft_mean": 0,
+
+                    "pred_history": [],
 
                     "cnt": 0,
                 }
@@ -165,6 +166,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
 
             sample_metric_container[guid]["cnt"] += 1
 
+            sample_metric_container[guid]["pred_history"].append(d["pred"])
+
         df = pd.DataFrame(
                 [
                     [
@@ -190,6 +193,36 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
 
         return df
     
+    def get_freqent_pred(self):
+        sample_metric_containers = self.sample_metric_container
+        df_list = []
+        for sample_metric_container in sample_metric_containers:
+            for guid, m in sample_metric_container.items():
+                pred_hist = m["pred_history"]
+                pred_hist = np.array(pred_hist)
+                m["freqent_pred"] = np.argmax(np.bincount(pred_hist,minlength=10))
+        
+            df = pd.DataFrame(
+                    [
+                        [
+                            g,
+                            m["freqent_pred"],
+                            m["label"],
+                            m["noisy_label"],
+                        ] for g,m in sample_metric_container.items()
+                    ],
+                    columns=[
+                        "guid",
+                        "freqent_pred",
+                        "label",
+                        "noisy_label",
+                    ]
+                )
+            df_list.append(df)
+        df = pd.concat(df_list)
+        
+        return df
+    
 
 class SampleMetricEvalServerHook(SyncServerHook):
     def __init__(self) -> None:
@@ -206,7 +239,12 @@ class SampleMetricEvalServerHook(SyncServerHook):
         server_handler.recv_metrics = None
         server_handler.recv_clean_mask = None
 
+        self.gmm_threshold = 0.5
+
     def on_global_update_start(self, server_handler, *args, **kwargs):
+        # if server_handler.round == server_handler.args.warmup_round:
+        #     server_handler.metrics_container = {}
+            
         server_handler.clean_guids, \
             server_handler.noisy_guids, \
                     server_handler.overall_guids = self.central_sieving(
@@ -227,7 +265,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
         df = self.metric_dict2df(server_handler.metrics_container)
         df["metric"] = df["metric_raw"] 
 
-        window_sz = 5
+        window_sz = 0
         df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= window_sz)
         gmm_metrics = df[(df["selected"] == True)]["metric"].to_numpy()
         gmm_y_true = df[(df["selected"] == True)]["is_clean"].to_numpy()
@@ -238,10 +276,10 @@ class SampleMetricEvalServerHook(SyncServerHook):
         server_handler._LOGGER.info(
             f"Round [{server_handler.round}/{server_handler.global_round}] {window_sz} window cs, "
             f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
-            f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.4f}%, "
-            f"recall: {recall_score(gmm_y_true,y_pred)*100:.4f}%, "
-            f"percision: {precision_score(gmm_y_true,y_pred)*100:.4f}%, "
-            f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.4f}%"
+            f"gmm {self.gmm_threshold}, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.2f}%, "
+            f"recall: {recall_score(gmm_y_true,y_pred)*100:.2f}%, "
+            f"percision: {precision_score(gmm_y_true,y_pred)*100:.2f}%, "
+            f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.2f}%"
         )
         
         if server_handler.wandb_logger is not None:
@@ -273,9 +311,9 @@ class SampleMetricEvalServerHook(SyncServerHook):
         y_true = filtered_df["is_clean"].to_numpy()
         server_handler._LOGGER.info(
             f"Round [{server_handler.round}/{server_handler.global_round}] filtered samples, "
-            f"recall: {recall_score(y_true,y_pred)*100:.4f}%, "
-            f"percision: {precision_score(y_true,y_pred)*100:.4f}%, "
-            f"f1_score: {f1_score(y_true,y_pred)*100:.4f}%"
+            f"recall: {recall_score(y_true,y_pred)*100:.2f}%, "
+            f"percision: {precision_score(y_true,y_pred)*100:.2f}%, "
+            f"f1_score: {f1_score(y_true,y_pred)*100:.2f}%"
         )
 
         # gmm_test = df[(df["uploaded_round"] == server_handler.round)]["metric"].to_numpy()
@@ -285,10 +323,10 @@ class SampleMetricEvalServerHook(SyncServerHook):
         # server_handler._LOGGER.info(
         #     f"Peer Round [{server_handler.round}/{server_handler.global_round}] server sieving, "
         #     f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
-        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.4f}%, "
-        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.4f}%, "
-        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.4f}%, "
-        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.4f}%"
+        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.2f}%, "
+        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.2f}%, "
+        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.2f}%, "
+        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.2f}%"
         # )
 
         # y_pred, probs = self.gmm(gmm_test)
@@ -296,10 +334,10 @@ class SampleMetricEvalServerHook(SyncServerHook):
         # server_handler._LOGGER.info(
         #     f"Self Round [{server_handler.round}/{server_handler.global_round}] server sieving, "
         #     f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
-        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.4f}%, "
-        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.4f}%, "
-        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.4f}%, "
-        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.4f}%"
+        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.2f}%, "
+        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.2f}%, "
+        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.2f}%, "
+        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.2f}%"
         # )
 
         return clean_guids, noisy_guids, gmm_guids
@@ -314,7 +352,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
         #print("prob1=", prob)
         #print("gmm.means_.argmin()=", gmm.means_.argmin())
         probs = probs[:,gmm.means_.argmin()] #属于小loss的概率是多少 获得的是真实无噪声样本的概率是多少 该样本无噪声的概率是多少
-        y_pred = (probs >= 0.5)
+        y_pred = (probs >= self.gmm_threshold)
         return y_pred, probs
     
     def sample_selection(self, metrics_container, guids, pred):
@@ -369,3 +407,203 @@ class SampleMetricEvalServerHook(SyncServerHook):
             ]
         )
     
+
+class DatasetCartography(SyncServerHook):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def on_init(self, server_handler, *args, **kwargs):
+        self.sample_metric_container = [{} for _ in range(server_handler.args.num_clients)]
+        
+    def on_global_update_end(self, server_handler, *args, **kwargs):
+        if self.every_n_round(server_handler, 5):
+            model = server_handler.model
+            sample_metrics_list = []
+            for cid in server_handler.cid_list:
+                eval_train_dataloader = server_handler.dataset.get_eval_train_dataloader(server_handler.args.dataset,cid=cid, batch_size=128) 
+                device = server_handler.device
+                loss_fn = nn.CrossEntropyLoss(reduction="none")
+                multimodel = hasattr(model, "models")
+                sample_dynamics = self.get_sample_dynamics(model, eval_train_dataloader, loss_fn, device, multimodel)
+                sample_metrics = self.sample_metrics_processing(sample_dynamics, cid, server_handler.round)
+                sample_metrics_list.append(sample_metrics)
+            df = pd.concat(sample_metrics_list)
+
+            # bin the confi_mean
+            # sample_metrics["confi_mean_bin"] = pd.cut(sample_metrics["confi_mean"], bins=10, labels=[i for i in range(10)])
+
+            sns.set_theme(rc={"figure.figsize":(12.8,7.2),"figure.dpi":300},context='paper',font_scale=1.6,style='whitegrid')
+            # scatter plot the df and lengend the hue with a colorbar
+            ax = sns.scatterplot(
+                data=sample_metrics,
+                x="loss_mean",
+                y="loss_vari",
+                hue="confi_mean",
+                style="is_clean",
+            )
+            
+            plt.savefig(f"tmp/datamap_{server_handler.round:04}.png",)
+            plt.close()
+
+            # df["metric"] = df["fack"]
+            # window_sz = 5
+            # df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= window_sz)
+            # gmm_metrics = df[(df["selected"] == True)]["metric"].to_numpy()
+            # gmm_y_true = df[(df["selected"] == True)]["is_clean"].to_numpy()
+            # gmm_guids = df[(df["selected"] == True)]["guid"].to_numpy()
+
+            # y_pred, probs = self.gmm(gmm_metrics)
+
+            # server_handler._LOGGER.info(
+            #     f"Round [{server_handler.round}/{server_handler.global_round}] "
+            #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.2f}%, "
+            #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.2f}%, "
+            #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.2f}%"
+            # )
+
+    def gmm(self, gmm_input, gmm_test=None):
+        gmm = GaussianMixture(n_components=2,max_iter=50,tol=1e-2,reg_covar=5e-4)
+        gmm.fit(gmm_input.reshape((-1, 1)))
+        if gmm_test is not None:
+            probs = gmm.predict_proba(gmm_test.reshape((-1, 1)))
+        else:
+            probs = gmm.predict_proba(gmm_input.reshape((-1, 1)))
+        #print("prob1=", prob)
+        #print("gmm.means_.argmin()=", gmm.means_.argmin())
+        probs = probs[:,gmm.means_.argmin()] #属于小loss的概率是多少 获得的是真实无噪声样本的概率是多少 该样本无噪声的概率是多少
+        y_pred = (probs >= 0.5)
+        return y_pred, probs
+
+    def get_sample_dynamics(self, model, dataloader, loss_fn, device, multimodel=False, top_k=1):
+        if multimodel is False:
+            model.eval()
+        else:
+            for net in model.models:
+                net.eval()
+
+        sample_dynamics = {}
+
+        with torch.no_grad():
+            for batch in dataloader:
+                inputs, noisy_labels, labels, guids = batch["img"], batch["noisy_label"], batch["label"], batch["guid"]
+                is_clean = (noisy_labels == labels).to(device)
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+                noisy_labels = noisy_labels.to(device)
+                batch_size = len(noisy_labels)
+
+                outputs = model(inputs)
+                if multimodel is True:
+                    # sum over outputs of all nets
+                    outputs = torch.sum(torch.stack(outputs), dim=0)
+
+                clean_loss = loss_fn(outputs, labels)
+                noisy_loss = loss_fn(outputs, noisy_labels)
+
+                _, preds = torch.max(outputs, 1)
+                pred_vec = torch.softmax(outputs,dim=-1)
+                pred_confi = torch.gather(pred_vec, dim=-1, index=preds.view(-1,1)) # predicted confi
+                pred_corr = preds.eq(noisy_labels).cpu()
+                for guid,p_c,i_c,c_loss,n_loss,p_confi,c_y,n_y,pred,p_v in zip(guids,pred_corr,is_clean,clean_loss,noisy_loss,pred_confi,labels,noisy_labels,preds,pred_vec):
+                    sample_dynamics[guid.item()] = {
+                        "correctness":p_c.item(),
+                        "is_clean": i_c.item(),
+                        "clean_loss": c_loss.item(),
+                        "noisy_loss": n_loss.item(),
+                        "confidence": p_confi.item(),
+                        "label": c_y.item(),
+                        "noisy_label": n_y.item(),
+                        "pred": pred.item(),
+                        "prediction": p_v.cpu().numpy(),
+                    }
+ 
+        return sample_dynamics
+    
+    def sample_metrics_processing(self, sample_dynamics, cid, round) -> pd.DataFrame:
+        def scaling(x):
+            return (1. + x + x**2/2)
+
+        sample_metric_container = self.sample_metric_container[cid]
+        for guid,d in sample_dynamics.items():
+            if guid not in sample_metric_container:
+                sample_metric_container[guid] = {
+                    "loss": 0,
+                    "is_clean": d["is_clean"],
+                    "label": d["label"],
+                    "noisy_label": d["noisy_label"],
+                    "prediction": d["prediction"],
+
+                    "uploaded_round": round,
+
+                    "accumulated_correctnes": 0,
+                    "cur_correctness": 0,
+                    "smoothed_correctness": 0,
+
+                    "loss_mean": 0,
+                    "loss_vari": 0,
+                    "loss_soft_mean": 0,
+
+                    "confi_mean": 0,
+
+                    "cnt": 0,
+                }
+
+            cnt = sample_metric_container[guid]["cnt"]
+            
+            sample_metric_container[guid]["loss"] = d["noisy_loss"]
+
+            # rolling mean and variance
+            mean_n_1 = sample_metric_container[guid]["loss_mean"] 
+            mean_n = mean_n_1 + (d["noisy_loss"] - mean_n_1) / (cnt + 1)
+            sigma2_n_1 = sample_metric_container[guid]["loss_vari"]
+            sigma2_n = sigma2_n_1 + ((d["noisy_loss"] - mean_n_1) * (d["noisy_loss"] - mean_n) - sigma2_n_1) / (cnt + 1)
+            
+            sample_metric_container[guid]["loss_mean"] = mean_n
+            sample_metric_container[guid]["loss_vari"] = sigma2_n
+            
+            sample_metric_container[guid]["loss_soft_mean"] = (sample_metric_container[guid]["loss_soft_mean"] * cnt + scaling(d["noisy_loss"])) / (cnt + 1)
+            
+            sample_metric_container[guid]["accumulated_correctnes"] += d["correctness"]
+            sample_metric_container[guid]["cur_correctness"] = d["correctness"]
+
+            sample_metric_container[guid]["smoothed_correctness"] = math.e**(-(float(d["correctness"]) + sample_metric_container[guid]["accumulated_correctnes"]/(cnt+1+1e-8)))
+            sample_metric_container[guid]["smoothed_correctness_loss"] = sample_metric_container[guid]["smoothed_correctness"] + sample_metric_container[guid]["loss_mean"]
+
+            sample_metric_container[guid]["confi_mean"] = (sample_metric_container[guid]["confi_mean"] * cnt + d["confidence"]) / (cnt + 1)
+
+            sample_metric_container[guid]["uploaded_round"] = round
+
+            sample_metric_container[guid]["cnt"] += 1
+
+        df = pd.DataFrame(
+                [
+                    [
+                        g,
+                        m["loss"],
+                        m["is_clean"],
+                        m["loss_mean"],
+                        m["loss_vari"],
+                        m["loss_soft_mean"],
+                        m["smoothed_correctness"],
+                        m["smoothed_correctness_loss"],
+                        m["confi_mean"],
+                        
+                        m["uploaded_round"],
+                    ] for g,m in sample_metric_container.items()
+                ],
+                columns=[
+                    "guid",
+                    "loss",
+                    "is_clean",
+                    "loss_mean",
+                    "loss_vari",
+                    "loss_soft_mean",
+                    "smoothed_correctness",
+                    "smoothed_correctness_loss",
+                    "confi_mean",
+                    
+                    "uploaded_round",
+                ]
+            )
+
+        return df

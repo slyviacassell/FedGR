@@ -165,6 +165,9 @@ class FedAPCSSemiClientTrainer(FedAPCSClientTrainer):
                     imgs = imgs.to(self.device)
                     noisy_labels = noisy_labels.to(self.device)
 
+                if self.args.use_local_mixup:
+                    imgs, noisy_labels = self.call_hook("mixup", "mixup", inputs=imgs, targets=noisy_labels)
+
                 outputs = self.model(imgs)
                 if self.hooks_dict.get("loss", None) is not None:
                     loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids, inputs=imgs, gt=labels)

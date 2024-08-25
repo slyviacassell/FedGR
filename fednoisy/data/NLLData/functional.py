@@ -83,9 +83,9 @@ class NoisyDataset(Dataset):
     def __len__(self):
         return len(self.labels)
     
-    def get_overall_noise_rate(self):
-        clean_mask = self.labels == self.noisy_labels
-        return sum(clean_mask)/len(clean_mask)
+    def get_noise_rate(self):
+        noisy_mask = np.array(self.labels) != np.array(self.noisy_labels)
+        return sum(noisy_mask)/len(noisy_mask)
 
 
 def FedNLL_name(

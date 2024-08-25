@@ -79,21 +79,13 @@ def read_fednll_args():
         "--use_cs", action="store_true", help="Whether to use CS model."
     )
     parser.add_argument(
-        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl"], default="loss"
+        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl", "loss_soft"], default="loss"
     )
     parser.add_argument(
         "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
     )
     parser.add_argument(
-        "--loss", choices=['mask_out_loss', "naive_pseudo_label_loss"], help="Which loss to use for cs."
-    )
-    parser.add_argument(
-        "--use_cs_semi", action="store_true", help="Whether to use CS Semi model."
-    )
-    
-    # todo
-    parser.add_argument(
-        "--metric_ema_gamma", type=float, default=0.7, help="The gamma for sample ema metric."
+        "--loss", choices=['mask_out_loss', "naive_pseudo_label_loss", "truncation_loss"], help="Which loss to use for cs."
     )
     
     parser.add_argument(
@@ -102,6 +94,43 @@ def read_fednll_args():
     parser.add_argument(
         "--local_ema_beta", type=float, help="The beta for local ema model.", default=0.99
     )
+
+    # ----Locla Mixup options----
+    parser.add_argument(
+        "--use_local_mixup", action="store_true", help="Whether to use mixup for local model training."
+    )
+    parser.add_argument(
+        "--mixup_alpha", type=float, default=0.5, help="The hyper parameter for mixup beta distribution."
+    )
+
+    # ----Orchestra options----
+    parser.add_argument(
+        "--use_orchestra", action="store_true", help="Whether to use Orchestra model."
+    )
+    parser.add_argument(
+        "--feat_dim", type=int, default=512, help="The feature dimension for Orchestra head."
+    )
+    parser.add_argument(
+        "--queue_size", type=int, default=4096, help="The queue size for Orchestra."
+    )
+    parser.add_argument(
+        "--g_n_centroids", type=int, default=128, help="The number of global centroids."
+    )
+    parser.add_argument(
+        "--l_n_centroids", type=int, default=32, help="The number of local centroids."
+    )
+    parser.add_argument(
+        "--orchestra_temperature", type=float, default=0.1, help="The temperature of Orchestra."
+    )
+
+    
+    # todo
+    parser.add_argument(
+        "--metric_ema_gamma", type=float, default=0.7, help="The gamma for sample ema metric."
+    )
+    
+    
+    
     parser.add_argument(
         "--global_ema", action="store_true", help="Whether use global ema model."
     )
@@ -147,13 +176,6 @@ def read_fednll_args():
         "--lambda_elr", type=float, default=1.0, help="The weight for ELR penalty loss."
     )
 
-    # ----Locla Mixup options----
-    parser.add_argument(
-        "--use_local_mixup", action="store_true", help="Whether to use mixup for local model training."
-    )
-    parser.add_argument(
-        "--mixup_alpha", type=float, default=0.5, help="The hyper parameter for mixup beta distribution."
-    )
 
     # ----Other options----
     parser.add_argument(

@@ -33,9 +33,9 @@ from fednoisy.algorithms.flnl.standalone.fedap_cs import (
     FedAPCSClientTrainer,
     FedAPCSServerHandler,
 )
-from fednoisy.algorithms.flnl.standalone.fedap_cs_semi import (
-    FedAPCSSemiClientTrainer,
-    FedAPCSSemiServerHandler,
+from fednoisy.algorithms.flnl.standalone.fedap_orchestra import (
+    FedAPOrchestraClientTrainer,
+    FedAPOrchestraServerHandler,
 )
 
 
@@ -49,6 +49,8 @@ from fednoisy.utils.misc import (
 )
 from fednoisy.models.build_model import build_model, build_multi_model
 from fednoisy.utils.wandb_logger import WandbLogger
+
+from fednoisy.models.orchestra_models.build_model import build_model as build_orchestra_model
 
 
 args = read_fednll_args()
@@ -72,6 +74,9 @@ args.time_stamp = time_stamp
 make_dirs(cmp_out_dir)
 
 model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
+
+if args.use_orchestra:
+    model = build_orchestra_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset, orchestra_dim=args.feat_dim)
 
 # ==== prepare logger ====
 server_logger = Logger(
@@ -101,8 +106,8 @@ if args.use_cs:
     handler = FedAPCSServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
     ) # server
-elif args.use_cs_semi:
-    handler = FedAPCSSemiServerHandler(
+elif args.use_orchestra:
+    handler = FedAPOrchestraServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
     ) # server
 else:
@@ -115,8 +120,8 @@ if args.use_cs:
     trainer = FedAPCSClientTrainer(
         model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     ) # client
-elif args.use_cs_semi:
-    trainer = FedAPCSSemiClientTrainer(
+elif args.use_orchestra:
+    trainer = FedAPOrchestraClientTrainer(
         model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     ) # client
 else:

@@ -146,8 +146,8 @@ class EvaluateTrainHook(SerialClientTrainerHook):
             f"c_loss: {eval_res['clean_loss']:.4f}, "
             f"n_loss: {eval_res['noisy_loss']:.4f}, "
             f"noise_rate: {eval_res['noise_ratio']*100:.2f}%, "
-            f"entropy: {eval_res['entropy']:.4f}, "
-            f"n_discrepancy: {n_discrepancy:.4f}, "
+            # f"entropy: {eval_res['entropy']:.4f}, "
+            # f"n_discrepancy: {n_discrepancy:.4f}, "
         )
         if trainer.wandb_logger is not None:
             logs = {

@@ -71,6 +71,9 @@ from fednoisy.algorithms.flnl.hooks import (
     SampleMetricEvalClientHook,
     LabelNoiseMaskOutLoss,
     LabelNoiseOrcaleMaskOutLoss,
+    LabelNoiseTruncationLoss,
+    LabelNoiseWeight,
+    ClientLabelDistriEMA,
 )
 
 class FedAPCSClientTrainer(FedAPClientTrainer):
@@ -97,6 +100,10 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
         if self.args.loss == "mask_out_loss":
             self.register_hooks(LabelNoiseMaskOutLoss(), "loss", "LOWEST")
             # self.register_hooks(LabelNoiseOrcaleMaskOutloss(), "loss","LOWEST")
+        elif self.args.loss == "truncation_loss":
+            self.register_hooks(LabelNoiseTruncationLoss(), "loss", "LOWEST")
+
+        self.register_hooks(ClientLabelDistriEMA(), "label_distri_ema", "LOWEST")
 
         super(FedAPCSClientTrainer, self).set_hooks()
 
@@ -143,7 +150,12 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
         self.model.train()
         
         data_size = len(train_loader.dataset)
-        data_size = torch.tensor(data_size)
+        if self.hooks_dict.get("weight_adjustment", None) is not None:
+            weight = self.call_hook("adjust_weight", "weight_adjustment", data_size)
+        else:
+            weight = data_size
+        
+        weight = torch.tensor(weight)
         g_cid = torch.tensor(self.g_cid)
 
         self.on_client_training_start()
@@ -167,13 +179,20 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
                     imgs = imgs.to(self.device)
                     noisy_labels = noisy_labels.to(self.device)
 
+                if self.args.use_local_mixup:
+                    assert self.args.criterion == "softce"
+                    imgs, noisy_labels = self.call_hook("mixup", "mixup", inputs=imgs, targets=noisy_labels)
+
                 outputs = self.model(imgs)
                 if self.hooks_dict.get("loss", None) is not None:
                     # mask = labels.to(self.device) == noisy_labels # for oracle mask out loss
                     # loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids, mask=mask)
-                    loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids)
+                    loss = self.call_hook("loss", "loss", outputs, noisy_labels, guids=guids, labels=labels)
                 else:
                     loss = self.criterion(outputs, noisy_labels)
+
+                if self.hooks_dict.get("label_distri_ema", None) is not None:
+                    self.call_hook("label_distri_ema", "label_distri_ema", outputs.detach())
 
                 if self.is_prox:
                     self.call_hook("update", "fedprox_loss_meter", l_cid=self.l_cid, batch_loss=loss.item())
@@ -213,5 +232,5 @@ class FedAPCSClientTrainer(FedAPClientTrainer):
             f"Round {self.round} client-{self.g_cid} local training done."
         )
 
-        local_result = [self.model_parameters, data_size, local_loss, g_cid] + self.cs_metrics
+        local_result = [self.model_parameters, weight, local_loss, g_cid] + self.cs_metrics
         return local_result

@@ -48,9 +48,12 @@ from fednoisy.algorithms.flnl.hooks import (
     DatasetCartography,
     ReInitNetworkHook,
 )
+from fednoisy.algorithms.flnl.standalone.fedap_orchestra.hooks import (
+    GlobalOrchestra,
+)
 
 
-class FedAPCSServerHandler(FedAPServerHandler):
+class FedAPOrchestraServerHandler(FedAPServerHandler):
     def __init__( 
         self,
         model: torch.nn.Module,
@@ -63,7 +66,7 @@ class FedAPCSServerHandler(FedAPServerHandler):
         wandb_logger: WandbLogger=None,
         args=None,
     ):
-        super(FedAPCSServerHandler, self).__init__(
+        super(FedAPOrchestraServerHandler, self).__init__(
             model, global_round, sample_ratio, nll_name, cuda, device, logger, wandb_logger, args
         )
 
@@ -73,9 +76,11 @@ class FedAPCSServerHandler(FedAPServerHandler):
         if self.args.noise_mode != "clean":
             self.register_hooks(LabelNoiseMonitor(), None, "LOWEST")
 
-        super(FedAPCSServerHandler, self).set_hooks()
+        self.register_hooks(GlobalOrchestra(), "global_orchestra", "LOWEST")
 
-        if type(self) ==  FedAPCSServerHandler:
+        super(FedAPOrchestraServerHandler, self).set_hooks()
+
+        if type(self) ==  FedAPOrchestraServerHandler:
             self._LOGGER.info(
                 f"Server Registered hooks: {self.hooks_dict.keys()}"
             )
@@ -89,6 +94,7 @@ class FedAPCSServerHandler(FedAPServerHandler):
         self.recv_metrics = [elem[4].numpy() for elem in buffer]
         self.recv_guids = [elem[5].numpy() for elem in buffer]
         self.recv_clean_mask = [elem[6].numpy() for elem in buffer]
+        self.local_centroids = [elem[7] for elem in buffer]
 
         self.on_global_update_start()
 
@@ -106,6 +112,10 @@ class FedAPCSServerHandler(FedAPServerHandler):
         self.on_global_update_end()
 
     @property
+    def global_centroids(self):
+        return self.call_hook("get_centroids", "global_orchestra")
+
+    @property
     def downlink_package(self) -> List[torch.Tensor]:
         if self.args.use_fedprox:
             mu = self.call_hook("get_mu", "fedprox_mu_scheduler")
@@ -118,6 +128,8 @@ class FedAPCSServerHandler(FedAPServerHandler):
             torch.from_numpy(self.noisy_guids), 
             torch.from_numpy(self.overall_guids),
         ]
+
+        down_pack = down_pack + [self.global_centroids]
 
         return down_pack
     
