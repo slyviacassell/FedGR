@@ -64,6 +64,10 @@ class SerialClientLocalEMAHook(SerialClientTrainerHook):
     def on_final_iter_end(self, client_trainer, *args, **kwargs):
         pass
 
+    def ema_outputs(self, client_trainer, inputs, *args, **kwargs):
+        local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
+        return local_ema_model(inputs, *args, **kwargs)
+
 
 class SyncServerEMAHook(SyncServerHook):
 

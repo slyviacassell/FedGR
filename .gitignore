@@ -152,3 +152,4 @@ datamap-*/
 *-line*/
 *tmp/
 fednoisy/algorithms/centr/logs*
+vis*/

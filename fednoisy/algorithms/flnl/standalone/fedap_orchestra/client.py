@@ -80,6 +80,8 @@ from fednoisy.algorithms.flnl.standalone.fedap_orchestra.hooks import (
     GlobalOrchestra,
     LocalOrchestra,
     SupOrchestraLoss,
+    OrchestraEmbeddingTSNE,
+    BackboneEmbeddingTSNE,
 )
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -105,10 +107,15 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
     def set_hooks(self):
         self.register_hooks(SampleMetricEvalClientHook(), None, "LOWEST")
 
-        self.register_hooks(SerialClientLocalEMAHook(), None, "LOWEST")
+        self.register_hooks(SerialClientLocalEMAHook(), "local_ema", "LOWEST")
+
+        self.register_hooks(ClientLabelDistriEMA(), "label_distri_ema", "LOWEST")
 
         self.register_hooks(LocalOrchestra(), "local_orchestra", "LOWEST")
         self.register_hooks(SupOrchestraLoss(), "loss", "LOWEST")
+
+        # self.register_hooks(OrchestraEmbeddingTSNE(), "embed_vis", "LOWEST")
+        # self.register_hooks(BackboneEmbeddingTSNE(), "embed_vis", "LOWEST")
 
         super(FedAPOrchestraClientTrainer, self).set_hooks()
 
@@ -191,12 +198,15 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
 
                 outputs_s = self.model(imgs_s, return_dict=True, full_heads=True)
                 outputs_s["orchestra_head"] = self.global_centroids(TF.normalize(outputs_s["orchestra_head"], dim=1))
-
-                q = self.call_hook("get_assignment_and_ema_update", "local_orchestra", inputs=imgs_w, targets=noisy_labels)
-
+                outputs_w = self.call_hook("ema_outputs", "local_ema", inputs=imgs_w, return_dict=True, full_heads=True)
+                
+                q = self.call_hook("get_assignment", "local_orchestra", outputs_w=outputs_w)
                 targets = {"linear_head": noisy_labels, "orchestra_head": q}
 
-                loss = self.call_hook("loss", "loss", outputs_s, targets, guids=guids, labels=labels)
+                loss = self.call_hook("loss", "loss", outputs_s=outputs_s, outputs_w=outputs_w, targets=targets, guids=guids, labels=labels)
+
+                if self.hooks_dict.get("label_distri_ema", None) is not None:
+                    self.call_hook("label_distri_ema", "label_distri_ema", outputs_s["linear_head"].detach())
 
                 if self.is_prox:
                     self.call_hook("update", "fedprox_loss_meter", l_cid=self.l_cid, batch_loss=loss.item())

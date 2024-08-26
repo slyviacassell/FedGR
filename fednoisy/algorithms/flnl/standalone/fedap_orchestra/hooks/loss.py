@@ -24,12 +24,17 @@ class SupOrchestraLoss(SerialClientTrainerHook):
     def __init__(self) -> None:
         super().__init__()
 
-    def loss(self, client_trainer, outputs, targets, *args, **kwargs):
-        sup_loss = TF.cross_entropy(outputs["linear_head"], targets["linear_head"])
+    def loss(self, client_trainer, outputs_s, targets, *args, **kwargs):
+        sup_loss = TF.cross_entropy(outputs_s["linear_head"], targets["linear_head"])
         
-        orchestra_loss = -torch.sum(targets["orchestra_head"] * torch.log_softmax(outputs["orchestra_head"]+1e-10, dim=1), dim=1).mean()
+        orchestra_loss = -torch.sum(targets["orchestra_head"] * torch.log_softmax(outputs_s["orchestra_head"]+1e-10, dim=1), dim=1).mean()
 
         loss = sup_loss + orchestra_loss
         return loss
+    
+
+class SemiOrchestraLoss(SupOrchestraLoss):
+    def mask(self, client_trainer, outputs, targets, *args, **kwargs):
+        pass
 
         

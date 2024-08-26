@@ -94,12 +94,8 @@ class LocalOrchestra(SerialClientTrainerHook):
         client_trainer.global_centroids.weight.data.copy_(global_centroids)
 
     @torch.no_grad()
-    def get_assignment_and_ema_update(self, client_trainer, inputs: torch.Tensor, targets: torch.Tensor, *args, **kwargs):
-        local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
-
-        local_ema_model.update()
-
-        outputs = local_ema_model(inputs, return_dict=True, full_heads=True)
+    def get_assignment(self, client_trainer, outputs_w: torch.Tensor, *args, **kwargs):
+        outputs = outputs_w
 
         keys = TF.normalize(outputs["orchestra_head"], dim=1)
         
