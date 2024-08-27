@@ -9,7 +9,7 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, x, enable_encoder=True, enable_decoder=True, return_dict=False, full_heads=False):
         assert enable_encoder or enable_decoder, "At least one of the encoder or decoder should be enabled."
-        if enable_decoder:
+        if enable_encoder:
             x = self.encoder(x)
         if enable_decoder:
             x = self.decoder(x, return_dict=return_dict, full_heads=full_heads)

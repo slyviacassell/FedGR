@@ -82,6 +82,8 @@ from fednoisy.algorithms.flnl.standalone.fedap_orchestra.hooks import (
     SupOrchestraLoss,
     OrchestraEmbeddingTSNE,
     BackboneEmbeddingTSNE,
+    LocalKNNClassifier,
+    LocalKNNMonitor,
 )
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -116,6 +118,9 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
 
         # self.register_hooks(OrchestraEmbeddingTSNE(), "embed_vis", "LOWEST")
         # self.register_hooks(BackboneEmbeddingTSNE(), "embed_vis", "LOWEST")
+
+        # self.register_hooks(LocalKNNClassifier(k=50), "knn", "LOWEST")
+        self.register_hooks(LocalKNNMonitor(k=50), "knn_monitor", "LOWEST")
 
         super(FedAPOrchestraClientTrainer, self).set_hooks()
 

@@ -34,7 +34,15 @@ class SupOrchestraLoss(SerialClientTrainerHook):
     
 
 class SemiOrchestraLoss(SupOrchestraLoss):
-    def mask(self, client_trainer, outputs, targets, *args, **kwargs):
-        pass
-
+    def loss(self, client_trainer, outputs_w, outputs_s, targets, *args, **kwargs):
+        with torch.no_grad():
+            probs, preds = torch.max(torch.softmax(outputs_w["linear_head"], dim=1), dim=1)
+            mask = (probs > 0.9)
         
+        sup_targets = targets["linear_head"]
+        sup_targets[mask] = preds[mask]
+        sup_loss = TF.cross_entropy(outputs_s["linear_head"], sup_targets)
+
+        orchestra_loss = -torch.sum(targets["orchestra_head"] * torch.log_softmax(outputs_s["orchestra_head"]+1e-10, dim=1), dim=1).mean()
+        loss = sup_loss + orchestra_loss
+        return loss
