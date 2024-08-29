@@ -23,6 +23,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
     def on_init(self, client_trainer, *args, **kwargs):
         client_trainer.overall_clean_guids = None
         client_trainer.overall_noisy_guids = None
+        client_trainer.overall_guids = None
+        client_trainer.overall_probs = None
 
         client_trainer.cs_metrics = None
 
@@ -33,6 +35,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         client_trainer.overall_clean_guids = client_trainer.cur_payload[p].numpy()
         client_trainer.overall_noisy_guids = client_trainer.cur_payload[p+1].numpy()
         client_trainer.overall_guids = client_trainer.cur_payload[p+2].numpy()
+        client_trainer.overall_probs = client_trainer.cur_payload[p+3].numpy()
     
     def on_client_training_end(self, client_trainer, *args, **kwargs):
         client_trainer.cs_metrics = self.cs_metric(client_trainer, *args, **kwargs)
@@ -193,36 +196,6 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
 
         return df
     
-    def get_freqent_pred(self):
-        sample_metric_containers = self.sample_metric_container
-        df_list = []
-        for sample_metric_container in sample_metric_containers:
-            for guid, m in sample_metric_container.items():
-                pred_hist = m["pred_history"]
-                pred_hist = np.array(pred_hist)
-                m["freqent_pred"] = np.argmax(np.bincount(pred_hist,minlength=10))
-        
-            df = pd.DataFrame(
-                    [
-                        [
-                            g,
-                            m["freqent_pred"],
-                            m["label"],
-                            m["noisy_label"],
-                        ] for g,m in sample_metric_container.items()
-                    ],
-                    columns=[
-                        "guid",
-                        "freqent_pred",
-                        "label",
-                        "noisy_label",
-                    ]
-                )
-            df_list.append(df)
-        df = pd.concat(df_list)
-        
-        return df
-    
 
 class SampleMetricEvalServerHook(SyncServerHook):
     def __init__(self) -> None:
@@ -232,6 +205,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
         server_handler.clean_guids = np.zeros(1)
         server_handler.noisy_guids = np.zeros(1)
         server_handler.overall_guids = np.zeros(1)
+        server_handler.overall_probs = np.zeros(1)
         
         server_handler.metrics_container = {} # metrics container
 
@@ -242,17 +216,15 @@ class SampleMetricEvalServerHook(SyncServerHook):
         self.gmm_threshold = 0.5
 
     def on_global_update_start(self, server_handler, *args, **kwargs):
-        # if server_handler.round == server_handler.args.warmup_round:
-        #     server_handler.metrics_container = {}
-            
         server_handler.clean_guids, \
             server_handler.noisy_guids, \
-                    server_handler.overall_guids = self.central_sieving(
-                        server_handler,
-                        server_handler.recv_metrics, 
-                        server_handler.recv_guids, 
-                        server_handler.recv_clean_mask
-                    )
+                    server_handler.overall_guids, \
+                         server_handler.overall_probs = self.central_sieving(
+                            server_handler,
+                            server_handler.recv_metrics, 
+                            server_handler.recv_guids, 
+                            server_handler.recv_clean_mask
+                        )
 
     def central_sieving(self, server_handler, recv_metrics, recv_guids, recv_clean_mask):
         # update the metrics
@@ -265,7 +237,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
         df = self.metric_dict2df(server_handler.metrics_container)
         df["metric"] = df["metric_raw"] 
 
-        window_sz = 0
+        window_sz = 5
         df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= window_sz)
         gmm_metrics = df[(df["selected"] == True)]["metric"].to_numpy()
         gmm_y_true = df[(df["selected"] == True)]["is_clean"].to_numpy()
@@ -301,11 +273,12 @@ class SampleMetricEvalServerHook(SyncServerHook):
             server_handler.wandb_logger.run.log({f"{server_handler.args.cs_metric} gmm": wandb.Image(fig)}, commit=False)
             plt.close(fig)
 
-        self.sample_selection(server_handler.metrics_container, gmm_guids, y_pred)
+        self.sample_selection(server_handler.metrics_container, gmm_guids, y_pred, probs)
         filtered_df = self.get_filtered_df(server_handler.metrics_container)
         clean_guids = filtered_df[filtered_df["filtered"] == True]["guid"].to_numpy()
         noisy_guids = filtered_df[filtered_df["filtered"] == False]["guid"].to_numpy()
         gmm_guids = filtered_df["guid"].to_numpy()
+        overall_probs = filtered_df["probs"].to_numpy()
 
         y_pred = filtered_df["filtered"].to_numpy()
         y_true = filtered_df["is_clean"].to_numpy()
@@ -340,7 +313,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
         #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.2f}%"
         # )
 
-        return clean_guids, noisy_guids, gmm_guids
+        return clean_guids, noisy_guids, gmm_guids, overall_probs
     
     def gmm(self, gmm_input, gmm_test=None):
         gmm = GaussianMixture(n_components=2,max_iter=50,tol=1e-2,reg_covar=5e-4)
@@ -355,10 +328,11 @@ class SampleMetricEvalServerHook(SyncServerHook):
         y_pred = (probs >= self.gmm_threshold)
         return y_pred, probs
     
-    def sample_selection(self, metrics_container, guids, pred):
-        for g, p in zip(guids, pred):
+    def sample_selection(self, metrics_container, guids, pred, probs):
+        for g, p, c in zip(guids, pred, probs):
             if g in metrics_container:
                 metrics_container[g]["filtered"] = p
+                metrics_container[g]["probs"] = c
     
     def update_server_metrics(self, guids, recv_metrics, server_metrics_container, clean_mask, round):
         for guid, metric, is_clean in zip(guids, recv_metrics, clean_mask):
@@ -368,6 +342,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
                     "is_clean": is_clean, # for debugging
                     "uploaded_round": round,
                     "filtered": True,
+                    "probs": 1.0,
                 }
             else:
                 server_metrics_container[guid]["metric_raw"] = metric
@@ -398,12 +373,14 @@ class SampleMetricEvalServerHook(SyncServerHook):
                     guid, 
                     m["filtered"], 
                     m["is_clean"],
+                    m["probs"],
                 ] for guid, m in metrics_container.items()
             ],
             columns=[
                 "guid", 
                 "filtered", 
                 "is_clean",
+                "probs",
             ]
         )
     

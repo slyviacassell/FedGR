@@ -117,6 +117,7 @@ class FedAPCSServerHandler(FedAPServerHandler):
             torch.from_numpy(self.clean_guids), 
             torch.from_numpy(self.noisy_guids), 
             torch.from_numpy(self.overall_guids),
+            torch.from_numpy(self.overall_probs),
         ]
 
         return down_pack

@@ -82,8 +82,9 @@ from fednoisy.algorithms.flnl.standalone.fedap_orchestra.hooks import (
     SupOrchestraLoss,
     OrchestraEmbeddingTSNE,
     BackboneEmbeddingTSNE,
-    LocalKNNClassifier,
+    LocalSniffer,
     LocalKNNMonitor,
+    SemiOrchestraLoss,
 )
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -111,16 +112,17 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
 
         self.register_hooks(SerialClientLocalEMAHook(), "local_ema", "LOWEST")
 
-        self.register_hooks(ClientLabelDistriEMA(), "label_distri_ema", "LOWEST")
+        self.register_hooks(ClientLabelDistriEMA(alpha=0.999), "label_distri_ema", "LOWEST")
 
         self.register_hooks(LocalOrchestra(), "local_orchestra", "LOWEST")
-        self.register_hooks(SupOrchestraLoss(), "loss", "LOWEST")
+        # self.register_hooks(SupOrchestraLoss(), "loss", "LOWEST")
+        self.register_hooks(SemiOrchestraLoss(), "loss", "LOWEST")
 
         # self.register_hooks(OrchestraEmbeddingTSNE(), "embed_vis", "LOWEST")
         # self.register_hooks(BackboneEmbeddingTSNE(), "embed_vis", "LOWEST")
 
-        # self.register_hooks(LocalKNNClassifier(k=50), "knn", "LOWEST")
-        self.register_hooks(LocalKNNMonitor(k=50), "knn_monitor", "LOWEST")
+        # self.register_hooks(LocalSniffer(k=50), "knn", "LOWEST")
+        # self.register_hooks(LocalKNNMonitor(k=50), "knn_monitor", "LOWEST")
 
         super(FedAPOrchestraClientTrainer, self).set_hooks()
 
@@ -205,8 +207,11 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
                 outputs_s["orchestra_head"] = self.global_centroids(TF.normalize(outputs_s["orchestra_head"], dim=1))
                 outputs_w = self.call_hook("ema_outputs", "local_ema", inputs=imgs_w, return_dict=True, full_heads=True)
                 
-                q = self.call_hook("get_assignment", "local_orchestra", outputs_w=outputs_w)
+                q = self.call_hook("get_assignment", "local_orchestra", outputs_w=outputs_w, outputs_s=outputs_s, guids=guids, labels=noisy_labels)
                 targets = {"linear_head": noisy_labels, "orchestra_head": q}
+
+                with torch.no_grad():
+                    outputs_w = self.model(imgs_w, return_dict=True, full_heads=True)
 
                 loss = self.call_hook("loss", "loss", outputs_s=outputs_s, outputs_w=outputs_w, targets=targets, guids=guids, labels=labels)
 

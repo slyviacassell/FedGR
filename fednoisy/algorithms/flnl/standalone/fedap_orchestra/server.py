@@ -127,6 +127,7 @@ class FedAPOrchestraServerHandler(FedAPServerHandler):
             torch.from_numpy(self.clean_guids), 
             torch.from_numpy(self.noisy_guids), 
             torch.from_numpy(self.overall_guids),
+            torch.from_numpy(self.overall_probs),
         ]
 
         down_pack = down_pack + [self.global_centroids]

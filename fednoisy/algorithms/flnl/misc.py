@@ -94,6 +94,12 @@ def read_fednll_args():
     parser.add_argument(
         "--local_ema_beta", type=float, help="The beta for local ema model.", default=0.99
     )
+    parser.add_argument(
+        "--local_ema_plus_global", action="store_true", help="Whether use global model to average local ema model."
+    )
+    parser.add_argument(
+        "--local_ema_plus_global_decay", type=float, help="Decay for global -> local EMA.", default=0.9
+    )
 
     # ----Locla Mixup options----
     parser.add_argument(
@@ -138,12 +144,7 @@ def read_fednll_args():
         "--global_ema_beta", type=float, help="The beta for global ema model.", default=0.99
     )
     
-    parser.add_argument(
-        "--local_ema_plus_global", action="store_true", help="Whether use global model to average local ema model."
-    )
-    parser.add_argument(
-        "--local_ema_plus_global_decay", type=float, help="Decay for global -> local EMA.", default=0.9
-    )
+    
     parser.add_argument(
         "--grad_clip", action="store_true", help="Whether use grad clip for local update."
     )
