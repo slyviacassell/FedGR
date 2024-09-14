@@ -40,7 +40,7 @@ from fednoisy.utils.misc import (
     AverageMeter,
 )
 from fednoisy.utils import misc as misc
-from fednoisy.utils.criterion import get_robust_loss, mixup_criterion, loss_coteaching, get_volmin_loss, NegEntropy, DivideMixSemiLoss, FedLCLoss, loss_coteaching_guessing
+from fednoisy.utils.criterion import get_robust_loss, mixup_criterion, loss_coteaching, NegEntropy, DivideMixSemiLoss, FedLCLoss, loss_coteaching_guessing
 from fednoisy.utils.mixup import mixup_data
 from fednoisy.utils import dynamic_bootstrapping as dynboot
 from fednoisy.utils.lr_scheduler import get_lr_scheduler
@@ -112,9 +112,14 @@ class FedNLLFedAvgClientTrainer(SGDSerialClientTrainer):
             self.cache.append(pack)
 
         if self.wandb_logger is not None:
-            self.wandb_logger.run.log({
-                "global/lr": self.optimizer.param_groups[0]["lr"],
-            })
+            if hasattr(self, "optimizer"):
+                self.wandb_logger.run.log({
+                    "global/lr": self.optimizer.param_groups[0]["lr"],
+                })
+            elif hasattr(self, "optimizer1"):
+                self.wandb_logger.run.log({
+                    "global/lr": self.optimizer1.param_groups[0]["lr"],
+                })
         
     def train(self, model_parameters, train_loader):
         self.set_model(model_parameters)
@@ -289,20 +294,29 @@ class FedNLLFedAvgCoteachingClientTrainer(FedNLLFedAvgClientTrainer):
             args,
         )
 
+    def setup_dataset(self, dataset):
+        self.dataset = dataset
+        self.setup_forget_rate_sche(self.args, self.num_clients)
+
+    def setup_forget_rate_sche(self,args,num_clients):
         # ---- initial hyperparameter setting ----
         # TODO: a possible hyperparameter setting for co-teaching in FL
         if args.coteaching_forget_rate is None:
             if args.globalize is True:
                 estimate_noise_ratio = args.noise_ratio
-            else:
-                estimate_noise_ratio = (args.min_noise_ratio + args.max_noise_ratio) / 2
-            self.coteaching_forget_rate = [
-                estimate_noise_ratio for _ in range(num_clients)
-            ]
+                self.coteaching_forget_rate = [
+                    estimate_noise_ratio for _ in range(num_clients)
+                ]
+            else:            
+                # using the true noise ratio of the dataset
+                self.coteaching_forget_rate = [
+                    self.dataset.get_dataset(cid).get_noise_rate() for cid in range(num_clients)
+                ]
         else:
             self.coteaching_forget_rate = [
                 args.coteaching_forget_rate for _ in range(num_clients)
             ]
+        self._LOGGER.info(f"forget rate: {self.coteaching_forget_rate}")
 
         rate_schedule = [
             np.ones(args.com_round) * self.coteaching_forget_rate[cid]

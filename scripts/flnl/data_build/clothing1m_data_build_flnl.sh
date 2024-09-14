@@ -1,21 +1,23 @@
 #!/bin/bash
+SEED=1
+
 python build_dataset_fed.py --dataset clothing1m \
     --partition iid \
-    --num_clients 10 \
+    --num_clients 500 \
     --globalize \
     --noise_mode real \
     --raw_data_dir ../rawdata/clothing1M/ \
     --data_dir ../flnldata/clothing1m \
-    --seed 1 \
+    --seed $SEED \
     --num_samples 265664
 
 python build_dataset_fed.py --dataset clothing1m \
     --partition noniid-labeldir \
-    --dir_alpha 0.1 \
-    --num_clients 10 \
+    --dir_alpha 0.3 \
+    --num_clients 500 \
     --globalize \
     --noise_mode real \
     --raw_data_dir ../rawdata/clothing1M/ \
     --data_dir ../flnldata/clothing1m \
-    --seed 1 \
+    --seed $SEED \
     --num_samples 265664

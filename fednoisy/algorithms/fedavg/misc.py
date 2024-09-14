@@ -10,6 +10,8 @@ from fednoisy.data.NLLData import functional as nllF
 def read_fednll_args():
     parser = argparse.ArgumentParser(description="Federated Noisy Labels Preparation")
 
+    parser.add_argument("--exp_name", type=str, default="fedap_cs", help="Experiment name.")
+
     # ==== Pipeline args ====
 
     parser.add_argument(
@@ -35,6 +37,9 @@ def read_fednll_args():
     # ----Wandb args----
     parser.add_argument("--use_wandb",action="store_true")
     parser.add_argument("--wandb_project_name",type=str,default="fednoisy")
+    parser.add_argument("--wandb_group",type=str,default="fednoisy")
+    parser.add_argument("--wandb_tags",nargs="+",type=str,default=None)
+    parser.add_argument("--wandb_job_type",type=str,default=None)
 
     # ----LR Scheduler args----
     parser.add_argument("--lr_scheduler",type=str,default="none")
@@ -85,7 +90,8 @@ def read_fednll_args():
         "--noise_mode",
         default=None,
         type=str,
-        choices=["clean", "sym", "asym", "real"],
+        # choices=["clean", "sym", "asym", "real"],
+        choices=["clean", "sym", "asym", "real", "mixed"],
         help="Noise type for centralized setting: 'sym' for symmetric noise; "
         "'asym' for asymmetric noise; 'real' for real-world noise. ",
     )
@@ -118,6 +124,12 @@ def read_fednll_args():
         default=32 * 2 * 1000,
         type=int,
         help="Number of samples used for Clothing1M training. Defaults as 64000.",
+    )
+    parser.add_argument(
+        "--noisy_client_ratio",
+        default=1.0,
+        type=float,
+        help="Ratio of noisy clients in federated setting.",
     )
 
     # ----Robust Loss Function options----

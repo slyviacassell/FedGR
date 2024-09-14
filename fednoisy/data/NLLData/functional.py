@@ -89,7 +89,7 @@ class NoisyDataset(Dataset):
 
 
 def FedNLL_name(
-    dataset, globalize, partition, num_clients=10, noise_mode="clean", **kw
+    dataset, globalize, partition, num_clients=10, noise_mode="clean", noisy_client_ratio=1.0, **kw
 ):
     if noise_mode == "clean":
         kw["noise_ratio"] = 0.0
@@ -109,6 +109,8 @@ def FedNLL_name(
     if noise_mode != "real":
         if globalize is False:
             noise_param = f"local_{noise_mode}_min_{kw['min_noise_ratio']:.2f}_max_{kw['max_noise_ratio']:.2f}"
+            if noisy_client_ratio < 1.0:
+                noise_param += f"_noisy_{noisy_client_ratio:.2f}"
         else:
             noise_param = f"global_{noise_mode}_{kw['noise_ratio']:.2f}"  # if noise_ratio is a float number
     else:

@@ -43,7 +43,7 @@ from fednoisy.utils.misc import (
     make_alg_name,
     now,
 )
-from fednoisy.models.build_model import build_model, build_multi_model, build_volmin_model
+from fednoisy.models.build_model import build_model, build_multi_model
 from fednoisy.utils.wandb_logger import WandbLogger
 
 args = read_fednll_args()
@@ -59,10 +59,13 @@ if args.dataset == "clothing1m":
     args.noise_ratio = 0.39
 
 nll_name = nllF.FedNLL_name(**vars(args))
-exp_name = make_exp_name("fedavg", args)
-alg_name = make_alg_name(args)
+exp_name = args.exp_name
+alg_name = "FedAvg-standalone"
+# exp_name = make_exp_name("fedavg", args)
+# alg_name = make_alg_name(args)
 time_stamp=now()
 cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name,time_stamp)
+args.time_stamp = time_stamp
 make_dirs(cmp_out_dir)
 
 if args.coteaching is True or args.dividemix is True:
@@ -84,7 +87,14 @@ client_logger = Logger(
 )
 
 if args.use_wandb:
-    wandb_logger = WandbLogger(args.wandb_project_name, exp_cfg=vars(args))
+    wandb_logger = WandbLogger(
+            args.wandb_project_name, 
+            exp_cfg=vars(args), 
+            group=args.time_stamp+"-"+args.wandb_group,
+            tags=args.wandb_tags,
+            job_type=args.wandb_job_type,
+            name=exp_name + "-standalone",
+        )
 else:
     wandb_logger = None
 

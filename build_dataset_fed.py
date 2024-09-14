@@ -107,7 +107,7 @@ def read_args():
         "--noise_mode",
         default=None,
         type=str,
-        choices=["clean", "sym", "asym", "real"],
+        choices=["clean", "sym", "asym", "real", "mixed"],
         help="Noise type for centralized setting: 'sym' for symmetric noise; "
         "'asym' for asymmetric noise; 'real' for real-world noise. Only works "
         "if --centralized=True.",
@@ -161,6 +161,12 @@ def read_args():
         default=0.2,
         type=float,
         help="Std noise ratio for local gaussian  symmetric noise or asymmetric noise. Only works when 'globalize' is Flase",
+    )
+    parser.add_argument(
+        "--noisy_client_ratio",
+        default=1.0,
+        type=float,
+        help="Ratio of noisy clients in federated setting.",
     )
 
     # ----Dataset path options----
@@ -265,6 +271,7 @@ if __name__ == "__main__":
             local_noise_mode=args.local_noise_mode,
             noise_ratio_mu=args.noise_ratio_mu,
             noise_ratio_sigma=args.noise_ratio_sigma,
+            noisy_client_ratio=args.noisy_client_ratio,
         )
         nll_cifar10.create_nll_scene(seed=args.seed)
         nll_cifar10.save_nll_scene()
@@ -284,6 +291,7 @@ if __name__ == "__main__":
             local_noise_mode=args.local_noise_mode,
             noise_ratio_mu=args.noise_ratio_mu,
             noise_ratio_sigma=args.noise_ratio_sigma,
+            noisy_client_ratio=args.noisy_client_ratio,
         )
         nll_cifar100.create_nll_scene(seed=args.seed)
         nll_cifar100.save_nll_scene()
@@ -303,6 +311,7 @@ if __name__ == "__main__":
             local_noise_mode=args.local_noise_mode,
             noise_ratio_mu=args.noise_ratio_mu,
             noise_ratio_sigma=args.noise_ratio_sigma,
+            noisy_client_ratio=args.noisy_client_ratio,
         )
         nll_mnist.create_nll_scene(seed=args.seed)
         nll_mnist.save_nll_scene()
@@ -323,6 +332,7 @@ if __name__ == "__main__":
             local_noise_mode=args.local_noise_mode,
             noise_ratio_mu=args.noise_ratio_mu,
             noise_ratio_sigma=args.noise_ratio_sigma,
+            noisy_client_ratio=args.noisy_client_ratio,
         )
         nll_svhn.create_nll_scene(seed=args.seed)
         nll_svhn.save_nll_scene()

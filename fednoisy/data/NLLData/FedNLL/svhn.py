@@ -49,6 +49,7 @@ class FedNLLSVHN(NLLSVHN, FedNLLScene):
         local_noise_mode: str = "uniform",
         noise_ratio_mu: float = 0.0,
         noise_ratio_sigma: float = 0.0,
+        noisy_client_ratio: float = 1.0,
     ):
         NLLSVHN.__init__(self, root_dir, noise_mode, out_dir)
         FedNLLScene.__init__(
@@ -68,4 +69,5 @@ class FedNLLSVHN(NLLSVHN, FedNLLScene):
             local_noise_mode=local_noise_mode,
             noise_ratio_mu=noise_ratio_mu,
             noise_ratio_sigma=noise_ratio_sigma,
+            noisy_client_ratio=noisy_client_ratio,
         )
