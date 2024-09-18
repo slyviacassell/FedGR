@@ -16,6 +16,8 @@ from collections import Counter
 from torch.utils.data import Dataset
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.mixture import GaussianMixture
+from scipy.spatial.distance import cdist
+import pickle
 
 class AverageMeter(object):
     """Compute and stores the average and current value"""
@@ -629,6 +631,15 @@ def save_json(file_name, root_dir, content):
         json.dump(content, out_f)
     return True
 
+def save_obj(obj, name, pkl_protocal=None):
+    with open(name + '.pkl', 'wb') as f:
+        # pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(obj, f, pkl_protocal)
+
+def load_obj(name):
+    with open(name + '.pkl', 'rb') as f:
+        return pickle.load(f)
+
 
 def make_dirs(dir_path):
     if not os.path.exists(dir_path):
@@ -847,3 +858,21 @@ def js_div(ideal_distri:torch.Tensor, label_distri:torch.Tensor):
     kl2 = (label_distri * (label_distri.log() - ((label_distri+ideal_distri)/2).log())).sum()
     js=(kl1+kl2)/2
     return js
+
+def lid_term(X: np.ndarray, batch: np.ndarray, k=20):
+    eps = 1e-8
+    X = np.asarray(X, dtype=np.float32)
+
+    batch = np.asarray(batch, dtype=np.float32)
+    f = lambda v: - k / (np.sum(np.log(v / (v[-1]+eps)))+eps)
+    distances = cdist(X, batch)
+
+    # get the closest k neighbours
+    sort_indices = np.apply_along_axis(np.argsort, axis=1, arr=distances)[:, 1:k + 1]
+    m, n = sort_indices.shape
+    idx = np.ogrid[:m, :n]
+    idx[1] = sort_indices
+    # sorted matrix
+    distances_ = distances[tuple(idx)]
+    lids = np.apply_along_axis(f, axis=1, arr=distances_)
+    return lids

@@ -15,45 +15,39 @@ COM_ROUND=500
 SR=0.1
 PARTITION='iid'
 MODEL='ResNet34'
-EXP_NAME='fedprox'
+EXP_NAME='fedavg-dividemix'
 WD_P_NAME=FLNL
 WD_J_TYPE='baseline'
 WD_MODE='offline'
-FPROX_MU=1.0
-FPROX_MU_SCHE='constant'
 
-
-# cf100-c${N_CLIENTS}-sr${SR}-iid-clean-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
-WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
---dataset $DATASET \
---model $MODEL \
---partition $PARTITION \
---num_clients $N_CLIENTS \
---noise_mode clean \
---globalize \
---data_dir $DATA_DIR \
---out_dir $OUT_DIR \
---com_round $COM_ROUND \
---epochs $EPOCHS \
---sample_ratio $SR \
---lr $LR \
---momentum $MOMENTUM \
---weight_decay $WEIGHT_DECAY \
---seed $SEED \
---preload \
---batch_size $BSZ \
---exp_name $EXP_NAME \
---use_wandb \
---wandb_project_name $WD_P_NAME \
---wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-clean-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r34-s${SEED} \
---wandb_tags ${DATASET} clients-${N_CLIENTS} clean lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
---wandb_job_type $WD_J_TYPE \
---use_fedprox \
---fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+# # cf100-c${N_CLIENTS}-sr${SR}-iid-clean-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
+# WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
+# --dataset $DATASET \
+# --model $MODEL \
+# --partition $PARTITION \
+# --num_clients $N_CLIENTS \
+# --noise_mode clean \
+# --globalize \
+# --data_dir $DATA_DIR \
+# --out_dir $OUT_DIR \
+# --com_round $COM_ROUND \
+# --epochs $EPOCHS \
+# --sample_ratio $SR \
+# --lr $LR \
+# --momentum $MOMENTUM \
+# --weight_decay $WEIGHT_DECAY \
+# --seed $SEED \
+# --preload \
+# --batch_size $BSZ \
+# --exp_name $EXP_NAME \
+# --use_wandb \
+# --wandb_project_name $WD_P_NAME \
+# --wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-clean-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r34-s${SEED} \
+# --wandb_tags ${DATASET} clients-${N_CLIENTS} clean lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
+#  --wandb_job_type $WD_J_TYPE
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
-WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
+WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
 --dataset $DATASET \
 --model $MODEL \
 --partition $PARTITION \
@@ -77,14 +71,14 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
 --wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
---wandb_tags ${DATASET} clients-${N_CLIENTS} n06ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
+--wandb_tags ${DATASET} clients-${N_CLIENTS} n06ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
---use_fedprox \
---fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--dividemix \
+--dividemix_warmup_round 100 \
+--dividemix_lambda_u 25
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
-WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
+WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
 --dataset $DATASET \
 --model $MODEL \
 --partition $PARTITION \
@@ -107,14 +101,15 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
 --wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
---wandb_tags ${DATASET} clients-${N_CLIENTS} n10ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
+--wandb_tags ${DATASET} clients-${N_CLIENTS} n10ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
---use_fedprox \
---fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--dividemix \
+--dividemix_warmup_round 100 \
+--dividemix_lambda_u 25
+
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
-WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
+WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
 --dataset $DATASET \
 --model $MODEL \
 --partition $PARTITION \
@@ -138,14 +133,15 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
 --wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
---wandb_tags ${DATASET} clients-${N_CLIENTS} n06las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
+--wandb_tags ${DATASET} clients-${N_CLIENTS} n06las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
---use_fedprox \
---fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--dividemix \
+--dividemix_warmup_round 100 \
+--dividemix_lambda_u 25 \
+--disable_asym_penalty
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
-WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
+WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
 --dataset $DATASET \
 --model $MODEL \
 --partition $PARTITION \
@@ -168,14 +164,15 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
 --wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
---wandb_tags ${DATASET} clients-${N_CLIENTS} n10las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
+--wandb_tags ${DATASET} clients-${N_CLIENTS} n10las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
---use_fedprox \
---fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--dividemix \
+--dividemix_warmup_round 100 \
+--dividemix_lambda_u 25 \
+--disable_asym_penalty
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
-WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
+WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
 --dataset $DATASET \
 --model $MODEL \
 --partition $PARTITION \
@@ -199,14 +196,14 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
 --wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
---wandb_tags ${DATASET} clients-${N_CLIENTS} n06lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
+--wandb_tags ${DATASET} clients-${N_CLIENTS} n06lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
---use_fedprox \
---fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--dividemix \
+--dividemix_warmup_round 100 \
+--dividemix_lambda_u 25
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
-WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
+WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
 --dataset $DATASET \
 --model $MODEL \
 --partition $PARTITION \
@@ -229,8 +226,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
 --wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
---wandb_tags ${DATASET} clients-${N_CLIENTS} n10lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
+--wandb_tags ${DATASET} clients-${N_CLIENTS} n10lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
---use_fedprox \
---fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--dividemix \
+--dividemix_warmup_round 100 \
+--dividemix_lambda_u 25

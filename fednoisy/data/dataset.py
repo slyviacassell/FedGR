@@ -65,7 +65,7 @@ class FedNLLDataset(FedDataset):
             )
             print(f"Test datasets preloaded.")
 
-        self.num = TRAIN_SAMPLE_NUM[args.dataset]
+        self.num = TRAIN_SAMPLE_NUM[args.dataset] if args.dataset in TRAIN_SAMPLE_NUM else args.num_samples
         self.dataset_name = args.dataset
         self.test_loader = None
 
@@ -143,7 +143,8 @@ class FedNLLDataset(FedDataset):
                     pin_memory=True,
                     persistent_workers=True,
                 )
-                self.test_loader = data_loader
+                if self.loader_cache:
+                    self.test_loader = data_loader
             else:
                 data_loader = self.test_loader
 

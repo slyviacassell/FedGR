@@ -86,14 +86,14 @@ class FedAPStandalone(StandalonePipeline):
             # evaluate
             # self.evaluate()
 
-        if self.save_last:
-            torch.save(
-                {
-                    "model": self.handler._model.state_dict(),
-                    "rounds": self.args.com_round,
-                },
-                self.last_model_path,
-            )
+        # if self.save_last:
+        #     torch.save(
+        #         {
+        #             "model": self.handler._model.state_dict(),
+        #             "rounds": self.args.com_round,
+        #         },
+        #         self.last_model_path,
+        #     )
 
     # def evaluate(self):
     #     loss_, acc_ = self.handler.evaluate(k=1)

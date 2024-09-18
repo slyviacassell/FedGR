@@ -72,13 +72,22 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
 
         self.on_init()
 
+        self._blacklist = ["_LOGGER", "dataset", "args", "wandb_logger"]
+
+    def __getstate__(self):
+        # 只序列化除 `_blacklist` 中的字段以外的所有字段
+        return {k: v for k, v in self.__dict__.items() if k not in self._blacklist}
+    
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
     def set_hooks(self):
         self.register_hooks(TestHook(), None, "LOWEST")
         self.register_hooks(GlobalGradNormMonitorHook(), None, "LOWEST")
         if self.args.use_fedprox:
-            if self.args.fedprox_mu == "constant":
-                self.register_hooks(FedProxMuConstantScheduler(self.args), "fedprox_mu_scheduler", "LOWEST")
-            elif self.args.fedprox_mu == "adaptive":
+            if self.args.fedprox_mu_scheduler == "constant":
+                self.register_hooks(FedProxMuConstantScheduler(self.args, init_mu=self.args.fedprox_mu), "fedprox_mu_scheduler", "LOWEST")
+            elif self.args.fedprox_mu_scheduler == "adaptive":
                 self.register_hooks(FedProxGlobalAdaptiveMuScheduler(self.args, mu_delta=0.01), "fedprox_mu_scheduler", "LOWEST")
         if type(self) ==  FedAPServerHandler:
             self._LOGGER.info(

@@ -10,6 +10,7 @@ from torch import nn
 import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
+import numpy as np
 
 from fedlab.utils.logger import Logger
 from fedlab.utils.aggregator import Aggregators
@@ -37,7 +38,10 @@ from fednoisy.algorithms.flnl.standalone.fedap_orchestra import (
     FedAPOrchestraClientTrainer,
     FedAPOrchestraServerHandler,
 )
-
+from fednoisy.algorithms.flnl.standalone.fednll import (
+    FedAPNLLClientTrainer,
+    FedAPNLLServerHandler,
+)
 
 from fednoisy.algorithms.flnl.misc import read_fednll_args
 from fednoisy.data.dataset import FedNLLDataset
@@ -46,6 +50,7 @@ from fednoisy.utils.misc import (
     make_dirs,
     result_parser,
     now,
+    load_obj,
 )
 from fednoisy.models.build_model import build_model, build_multi_model
 from fednoisy.utils.wandb_logger import WandbLogger
@@ -69,13 +74,19 @@ nll_name = nllF.FedNLL_name(**vars(args))
 exp_name = args.exp_name
 alg_name = "FedAP-standalone"
 time_stamp=now()
-cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name,time_stamp)
+cmp_out_dir = os.path.join(args.out_dir, nll_name, alg_name, exp_name, time_stamp)
 args.time_stamp = time_stamp
 make_dirs(cmp_out_dir)
+args.cmp_out_dir = cmp_out_dir
+
+if args.n_sys_sniffing_per_client != 0:
+    args.sniffing_round = int(np.ceil(1. / args.sample_ratio) * args.n_sys_sniffing_per_client)
+else:
+    args.sniffing_round = 0
 
 model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
 
-if args.use_orchestra:
+if args.use_orchestra or args.use_fednll:
     model = build_orchestra_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset, orchestra_dim=args.feat_dim)
 
 # ==== prepare logger ====
@@ -96,7 +107,7 @@ if args.use_wandb:
             group=args.time_stamp+"-"+args.wandb_group,
             tags=args.wandb_tags,
             job_type=args.wandb_job_type,
-            name="standalone",
+            name=exp_name + "-standalone",
         )
 else:
     wandb_logger = None
@@ -110,6 +121,10 @@ elif args.use_orchestra:
     handler = FedAPOrchestraServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
     ) # server
+elif args.use_fednll:
+    handler = FedAPNLLServerHandler(
+        model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
+    )
 else:
     handler = FedAPServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
@@ -124,10 +139,24 @@ elif args.use_orchestra:
     trainer = FedAPOrchestraClientTrainer(
         model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     ) # client
+elif args.use_fednll:
+    trainer = FedAPNLLClientTrainer(
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
+    )
 else:
     trainer = FedAPClientTrainer(
         model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     ) # client
+
+if args.restore:
+    assert args.ckpt_dir is not None
+    handler_state = load_obj(os.path.join(args.ckpt_dir, "server_handler"))
+    print("loaded server handler")
+    trainer_state = load_obj(os.path.join(args.ckpt_dir, "client_trainer"))
+    print("loaded client trainer")
+    
+    handler.__setstate__(handler_state.__getstate__())
+    trainer.__setstate__(trainer_state.__getstate__())
 
 # ==== server dataset ====
 handler_dataset = FedNLLDataset(args, test_preload=args.preload, train_preload=args.preload)

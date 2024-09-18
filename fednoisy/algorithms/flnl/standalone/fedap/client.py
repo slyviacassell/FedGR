@@ -100,6 +100,15 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         self.set_hooks() 
 
         self.on_init()
+        
+        self._blacklist = ["_LOGGER", "dataset", "args", "wandb_logger", "cur_payload", "cache"]
+
+    def __getstate__(self):
+        # 只序列化除 `_blacklist` 中的字段以外的所有字段
+        return {k: v for k, v in self.__dict__.items() if k not in self._blacklist}
+    
+    def __setstate__(self, state):
+        self.__dict__.update(state)
 
     def set_hooks(self):
         self.register_hooks(TestHook(test_interval=5), None, "LOWEST")

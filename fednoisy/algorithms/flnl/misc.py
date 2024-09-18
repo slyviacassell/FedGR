@@ -68,7 +68,10 @@ def read_fednll_args():
         "--use_fedprox", action="store_true", help="Whether to use FedProx."
     )
     parser.add_argument(
-        "--fedprox_mu", type=str, choices=["constant", "adaptive"], default="constant", help="The mu scheduler for FedProx."
+        "--fedprox_mu_scheduler", type=str, choices=["constant", "adaptive"], default="constant", help="The mu scheduler for FedProx."
+    )
+    parser.add_argument(
+        "--fedprox_mu", type=float, default=0.1, help="The mu for FedProx."
     )
 
     # ----FedRobust args----
@@ -76,10 +79,13 @@ def read_fednll_args():
         "--warmup_round", type=int, default=0, help="The warmup round."
     )
     parser.add_argument(
+        "--n_sys_sniffing_per_client", type=int, default=0, help="The system sniffing iteration of each client."
+    )
+    parser.add_argument(
         "--use_cs", action="store_true", help="Whether to use CS model."
     )
     parser.add_argument(
-        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl", "loss_soft"], default="loss"
+        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl", "loss_ema"], default="loss"
     )
     parser.add_argument(
         "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
@@ -127,6 +133,22 @@ def read_fednll_args():
     )
     parser.add_argument(
         "--orchestra_temperature", type=float, default=0.1, help="The temperature of Orchestra."
+    )
+
+    # ----FedNLL options----
+    parser.add_argument(
+        "--use_fednll", action="store_true", help="Whether to use Orchestra model."
+    )
+
+    # ----Restore options----
+    parser.add_argument(
+        "--restore", action="store_true", help="Whether to restore training."
+    )
+    parser.add_argument(
+        "--ckpt_dir", default=None, type=str, help="Path for ckpt dir."
+    )
+    parser.add_argument(
+        "--ckpt_interval", default=150, type=int, help="Round interval for ckpt."
     )
 
     
@@ -230,7 +252,7 @@ def read_fednll_args():
         "--noise_mode",
         default=None,
         type=str,
-        choices=["clean", "sym", "asym", "real"],
+        choices=["clean", "sym", "asym", "real", "mixed"],
         help="Noise type for centralized setting: 'sym' for symmetric noise; "
         "'asym' for asymmetric noise; 'real' for real-world noise. ",
     )
@@ -263,6 +285,12 @@ def read_fednll_args():
         default=32 * 2 * 1000,
         type=int,
         help="Number of samples used for Clothing1M training. Defaults as 64000.",
+    )
+    parser.add_argument(
+        "--noisy_client_ratio",
+        default=1.0,
+        type=float,
+        help="Ratio of noisy clients in federated setting.",
     )
 
     # ----Robust Loss Function options----

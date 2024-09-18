@@ -20,7 +20,7 @@ WD_P_NAME=FLNL
 WD_J_TYPE='baseline'
 WD_MODE='offline'
 
-# cf10-c${N_CLIENTS}-sr${SR}-iid-clean-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
+# cf100-c${N_CLIENTS}-sr${SR}-iid-clean-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -42,11 +42,11 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group cf10-c${N_CLIENTS}-sr${SR}-iid-clean-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED} \
+--wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-clean-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r34-s${SEED} \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} clean lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE
 
-# cf10-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
+# cf100-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -70,11 +70,11 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group cf10-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED \
+--wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n06ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE
 
-# cf10-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
+# cf100-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -97,11 +97,11 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group cf10-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED \
+--wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n10ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE
 
-# cf10-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
+# cf100-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -125,11 +125,11 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group cf10-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED \
+--wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n06las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE
 
-# cf10-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
+# cf100-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -152,11 +152,11 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group cf10-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED \
+--wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n10las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE
 
-# cf10-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
+# cf100-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -180,11 +180,11 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group cf10-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED \
+--wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n06lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE
 
-# cf10-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
+# cf100-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -207,6 +207,6 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group cf10-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED \
+--wandb_group cf100-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n10lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE

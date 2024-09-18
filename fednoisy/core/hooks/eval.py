@@ -113,16 +113,33 @@ class TestHook(SerialClientTrainerHook, SyncServerHook):
     
 
 class EvaluateTrainHook(SerialClientTrainerHook):
-    def __init__(self, model, log_annotation, eval_interval=1) -> None:
+    def __init__(self, model, log_annotation, eval_interval=1, eval_local_epoch: int=None) -> None:
         SerialClientTrainerHook.__init__(self)
         self.model = model
         self.log_annotation = log_annotation
         self.eval_interval = eval_interval
+        self.eval_local_epoch = eval_local_epoch
+        self.local_epoch_cnt = 0
+
+    def reset_local_epoch_cnt(self):
+        self.local_epoch_cnt = 0
+
+    def local_epoch_cnt_update(self):
+        self.local_epoch_cnt += 1
+
+    def on_local_process_start(self, client_trainer, *args, **kwargs):
+        self.reset_local_epoch_cnt()
 
     def on_client_training_end(self, client_trainer, *args, **kwargs):
-        # the global round is increased
+        self.reset_local_epoch_cnt()
+
+    def on_training_epoch_end(self, client_trainer, *args, **kwargs):
+        self.local_epoch_cnt_update()
         if self.every_n_round(client_trainer, self.eval_interval):
-            return self.eval_fn(client_trainer)
+            if self.eval_local_epoch is None and self.local_epoch_cnt == client_trainer.epochs:
+                return self.eval_fn(client_trainer)
+            elif self.local_epoch_cnt == self.eval_local_epoch:
+                return self.eval_fn(client_trainer)
     
     def eval_fn(self, trainer):
         log = self.log_annotation
@@ -234,23 +251,3 @@ class EvaluateTrainHook(SerialClientTrainerHook):
             "entropy": entropy_.avg
         }
 
-
-class LocalEpochEvalHook(EvaluateTrainHook):
-    def __init__(self, model, log_annotation, eval_local_epoch) -> None:
-        super().__init__(model, log_annotation, eval_interval=1)
-        self.local_epoch_cnt = 0
-        self.eval_local_epoch = eval_local_epoch
-
-    def reset_local_epoch_cnt(self):
-        self.local_epoch_cnt = 0
-
-    def on_local_process_start(self, client_trainer, *args, **kwargs):
-        self.reset_local_epoch_cnt()
-
-    def on_client_training_end(self, client_trainer, *args, **kwargs):
-        self.reset_local_epoch_cnt()
-
-    def on_training_epoch_end(self, client_trainer, *args, **kwargs):
-        self.local_epoch_cnt += 1
-        if self.local_epoch_cnt == self.eval_local_epoch:
-            return self.eval_fn(client_trainer)

@@ -10,6 +10,14 @@ class AlogrithmBase:
         self.hooks_dict = OrderedDict()
         self._hooks = []
 
+    def remove_hooks(self, hook_name):
+        if hook_name in self.hooks_dict:
+            self.hooks_dict.pop(hook_name)
+            for i, hook in enumerate(self._hooks):
+                if hook.name == hook_name:
+                    self._hooks.pop(i)
+                    break
+
     def register_hooks(self, hook, name=None, priority="NORMAL"):
         """
         Ref: https://github.com/open-mmlab/mmcv/blob/a08517790d26f8761910cac47ce8098faac7b627/mmcv/runner/base_runner.py#L263

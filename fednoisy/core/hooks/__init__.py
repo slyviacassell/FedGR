@@ -16,7 +16,6 @@ from .ema import (
 from .eval import (
     TestHook, 
     EvaluateTrainHook,
-    LocalEpochEvalHook,
 )
 from .grad_clip import ClientGradClipHook
 from .distill import DistillationHooK
