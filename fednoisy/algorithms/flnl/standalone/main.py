@@ -87,7 +87,7 @@ else:
 model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
 
 if args.use_orchestra or args.use_fednll:
-    model = build_orchestra_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset, orchestra_dim=args.feat_dim)
+    model = build_orchestra_model(args.model, args.ssl_method, CLASS_NUM[args.dataset], dataset=args.dataset, rep_dim=args.feat_dim)
 
 # ==== prepare logger ====
 server_logger = Logger(
@@ -149,14 +149,24 @@ else:
     ) # client
 
 if args.restore:
+    # fixme: restore consum twice the memory temporarily
     assert args.ckpt_dir is not None
     handler_state = load_obj(os.path.join(args.ckpt_dir, "server_handler"))
     print("loaded server handler")
     trainer_state = load_obj(os.path.join(args.ckpt_dir, "client_trainer"))
     print("loaded client trainer")
     
-    handler.__setstate__(handler_state.__getstate__())
-    trainer.__setstate__(trainer_state.__getstate__())
+    handler.load_state(handler_state.state_dict())
+    trainer.load_state(trainer_state.state_dict())
+
+    del handler_state
+    del trainer_state
+
+    torch.cuda.empty_cache()
+
+    # clear the cache
+    handler.round += 1
+    handler.client_buffer_cache = []
 
 # ==== server dataset ====
 handler_dataset = FedNLLDataset(args, test_preload=args.preload, train_preload=args.preload)

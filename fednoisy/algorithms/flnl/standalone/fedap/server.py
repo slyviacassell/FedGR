@@ -6,6 +6,7 @@ import numpy as np
 
 from typing import List
 from copy import deepcopy
+from collections import OrderedDict
 
 import torch
 from torch import nn
@@ -40,6 +41,7 @@ from fednoisy.core import SynServerAlogrithmBase
 from fednoisy.core.hooks import (
     TestHook,
     GlobalGradNormMonitorHook,
+    SyncServerEMAHook,
 )
 from fednoisy.algorithms.flnl.hooks import (
     FedProxGlobalAdaptiveMuScheduler,
@@ -72,14 +74,51 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
 
         self.on_init()
 
-        self._blacklist = ["_LOGGER", "dataset", "args", "wandb_logger"]
+        self._blacklist = [
+            "_LOGGER", 
+            "dataset", 
+            "args", 
+            "wandb_logger", 
+            "client_buffer_cache", # since the ckpt is on_global_update_end
+            "_hooks",
+            "hooks_dict",
+        ]
 
     def __getstate__(self):
         # 只序列化除 `_blacklist` 中的字段以外的所有字段
-        return {k: v for k, v in self.__dict__.items() if k not in self._blacklist}
+        ckpt_hooks = {}
+        for hook_name, hook in self.hooks_dict.items():
+            if isinstance(hook, SyncServerEMAHook):
+                self.global_ema_model.ema_model.to("cpu")
+                ckpt_hooks[hook_name] = hook
+
+        self.model.to("cpu")
+        state = {k: v for k, v in self.__dict__.items() if k not in self._blacklist}
+        state["ckpt_hooks"] = ckpt_hooks
+        return state
     
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        valid_state = {k: v for k, v in state.items() if k != "ckpt_hooks"}
+        self.__dict__.update(valid_state)
+
+        self.hooks_dict = OrderedDict()
+        self._hooks = []
+        for k,v in state["ckpt_hooks"].items():
+            self.register_hooks(v, k, v.priority)
+
+    def load_state(self, state):
+        vaild_state = {k: v for k, v in state.items() if k not in ["_hooks", "hooks_dict"]}
+        for k,v in state["hooks_dict"].items():
+            self.register_hooks(v, k, v.priority)
+        self.__dict__.update(vaild_state)
+
+        self.model.to(self.device)
+        for hook_name, hook in self.hooks_dict.items():
+            if isinstance(hook, SyncServerEMAHook):
+                self.global_ema_model.ema_model.to(self.device)
+    
+    def state_dict(self):
+        return self.__dict__
 
     def set_hooks(self):
         self.register_hooks(TestHook(), None, "LOWEST")

@@ -1,4 +1,5 @@
 import copy
+import torch
 
 from fednoisy.utils.ema import EMA
 
@@ -64,6 +65,11 @@ class SerialClientLocalEMAHook(SerialClientTrainerHook):
     def on_final_iter_end(self, client_trainer, *args, **kwargs):
         pass
 
+    def update(self, client_trainer, *args, **kwargs):
+        local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
+        local_ema_model.update()
+        
+    @torch.no_grad()
     def ema_outputs(self, client_trainer, inputs, *args, **kwargs):
         local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
         return local_ema_model(inputs, *args, **kwargs)

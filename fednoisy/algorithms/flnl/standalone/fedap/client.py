@@ -65,9 +65,11 @@ from fednoisy.core.hooks import (
     SerialClientLocalEMAHook,
     GlobalGradNormMonitorHook,
     LocalMixupHook,
+    SerialClientLocalEMAHook,
 )
 from fednoisy.algorithms.flnl.hooks import (
     FedProxLocalLossMeterHook,
+    SampleMetricEvalClientHook,
 )
 
 
@@ -101,14 +103,58 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
 
         self.on_init()
         
-        self._blacklist = ["_LOGGER", "dataset", "args", "wandb_logger", "cur_payload", "cache"]
+        self._blacklist = [
+            "_LOGGER", 
+            "dataset", 
+            "args", 
+            "wandb_logger", 
+            "cur_payload", 
+            "cache",
+            "hooks_dict",
+            "_hooks"
+        ]
 
     def __getstate__(self):
         # 只序列化除 `_blacklist` 中的字段以外的所有字段
-        return {k: v for k, v in self.__dict__.items() if k not in self._blacklist}
+        # todo: gpu -> cpu
+        ckpt_hooks = {}
+        for hook_name, hook in self.hooks_dict.items():
+            if isinstance(hook, SerialClientLocalEMAHook):
+                for m in self.local_ema_models:
+                    m.ema_model.to("cpu")
+                ckpt_hooks[hook_name] = hook
+
+        self.model.to("cpu")
+        self.cur_global_model.to("cpu")
+
+        state = {k: v for k, v in self.__dict__.items() if k not in self._blacklist}
+        state.update({"ckpt_hooks": ckpt_hooks})
+        return state
     
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        valid_state = {k: v for k, v in state.items() if k != "ckpt_hooks"}
+        self.__dict__.update(valid_state)
+
+        self.hooks_dict = OrderedDict()
+        self._hooks = []
+        for k,v in state["ckpt_hooks"].items():
+            self.register_hooks(v, k, v.priority)
+    
+    def load_state(self, state):
+        vaild_state = {k: v for k, v in state.items() if k not in ["_hooks", "hooks_dict"]}
+        for k,v in state["hooks_dict"].items():
+            self.register_hooks(v, k, v.priority)
+        self.__dict__.update(vaild_state)
+
+        self.model.to(self.device)
+        self.cur_global_model.to(self.device)
+        for hook_name, hook in self.hooks_dict.items():
+            if isinstance(hook, SerialClientLocalEMAHook):
+                for m in self.local_ema_models:
+                    m.ema_model.to(self.device)
+    
+    def state_dict(self):
+        return self.__dict__
 
     def set_hooks(self):
         self.register_hooks(TestHook(test_interval=5), None, "LOWEST")
@@ -195,7 +241,9 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
     def train(self, model_parameters, train_loader, mu=0.0):
         self.set_model(model_parameters)
         if self.is_prox:
-            frz_model = deepcopy(self.model)
+            # frz_model = deepcopy(self.model)
+            self.cur_global_model.eval()
+            frz_model = self.cur_global_model
         self.setup_optim(self.epochs, self.batch_size, self.lr, self.weight_decay, self.momentum)
         self.model.train()
         

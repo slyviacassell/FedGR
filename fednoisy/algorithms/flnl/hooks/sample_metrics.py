@@ -15,6 +15,8 @@ from fednoisy.core.hooks import (
     SyncServerHook,
 )
 
+from fednoisy.models.orchestra_models.container import EncoderDecoder
+from fednoisy.utils.misc import lid_term
 
 class SampleMetricEvalClientHook(SerialClientTrainerHook):
     def __init__(self) -> None:
@@ -30,6 +32,10 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
 
         self.sample_metric_container = [{} for _ in range(client_trainer.num_clients)]
 
+        self.epoch_cnt = 0
+
+        self.use_local = False if client_trainer.args.partition == "iid" else True
+
     def on_local_process_start(self, client_trainer, *args, **kwargs):
         p = 2
         client_trainer.overall_clean_guids = client_trainer.cur_payload[p].numpy()
@@ -38,15 +44,23 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         client_trainer.overall_probs = client_trainer.cur_payload[p+3].numpy()
     
     def on_client_training_end(self, client_trainer, *args, **kwargs):
-        client_trainer.cs_metrics = self.cs_metric(client_trainer, *args, **kwargs)
+        sample_metrics = self.update_sample_metrics(client_trainer, client_trainer.args.metric_model)
+        client_trainer.cs_metrics = self.cs_metric(client_trainer, sample_metrics, *args, **kwargs)
 
-    def cs_metric(self, client_trainer, *args, **kwargs) -> List[torch.Tensor]:
-        if client_trainer.args.metric_model == "global":
+        self.epoch_cnt = 0
+
+    def on_training_epoch_end(self, client_trainer, *args, **kwargs):
+        self.epoch_cnt += 1
+        if self.epoch_cnt == 1 and self.use_local:
+            self.update_sample_metrics(client_trainer, metric_model="local")        
+    
+    def update_sample_metrics(self, client_trainer, metric_model: str):
+        if metric_model == "global":
             model = client_trainer.cur_global_model
-        elif client_trainer.args.metric_model == "local":
+        elif metric_model == "local":
             model = client_trainer.model
         else:
-            raise ValueError(f"Invalid metric model: {client_trainer.args.metric_model}")
+            raise ValueError(f"Invalid metric model: {metric_model}")
 
         eval_train_dataloader = client_trainer.dataset.get_eval_train_dataloader(client_trainer.args.dataset,cid=client_trainer.g_cid, batch_size=128) 
         # eval_train_dataloader = client_trainer.dataset.get_dataloader(client_trainer.g_cid, train=True, batch_size=client_trainer.batch_size)
@@ -55,6 +69,10 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         multimodel = hasattr(model, "models")
         sample_dynamics = self.get_sample_dynamics(model, eval_train_dataloader, loss_fn, device, multimodel)
         sample_metrics = self.sample_metrics_processing(sample_dynamics, client_trainer.l_cid, client_trainer.round)
+
+        return sample_metrics
+
+    def cs_metric(self, client_trainer, sample_metrics: pd.DataFrame, *args, **kwargs) -> List[torch.Tensor]:
 
         guids = sample_metrics["guid"].to_numpy()
         clean_mask = sample_metrics["is_clean"].to_numpy()
@@ -68,6 +86,11 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
             cs_metrics = sample_metrics["smoothed_correctness"].to_numpy()
         elif client_trainer.args.cs_metric == "scl":
             cs_metrics = sample_metrics["smoothed_correctness_loss"].to_numpy()
+        elif client_trainer.args.cs_metric == "loss_ema":
+            cs_metrics = sample_metrics["loss_ema"].to_numpy()
+
+        if self.use_local:
+            cs_metrics = cs_metrics * 1.0
 
         guids = torch.from_numpy(guids)
         clean_mask = torch.from_numpy(clean_mask)
@@ -141,6 +164,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "loss_vari": 0,
                     "loss_soft_mean": 0,
 
+                    "loss_ema": d["noisy_loss"],
+
                     "pred_history": [],
 
                     "cnt": 0,
@@ -158,6 +183,9 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
             
             sample_metric_container[guid]["loss_mean"] = mean_n
             sample_metric_container[guid]["loss_vari"] = sigma2_n
+
+            alpha = 0.9
+            sample_metric_container[guid]["loss_ema"] = (1. - alpha) * d["noisy_loss"] + alpha * sample_metric_container[guid]["loss_ema"]
             
             sample_metric_container[guid]["loss_soft_mean"] = (sample_metric_container[guid]["loss_soft_mean"] * cnt + scaling(d["noisy_loss"])) / (cnt + 1)
             
@@ -181,6 +209,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                         m["loss_soft_mean"],
                         m["smoothed_correctness"],
                         m["smoothed_correctness_loss"],
+                        m["loss_ema"],
                     ] for g,m in sample_metric_container.items()
                 ],
                 columns=[
@@ -191,6 +220,7 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
                     "loss_soft_mean",
                     "smoothed_correctness",
                     "smoothed_correctness_loss",
+                    "loss_ema",
                 ]
             )
 
@@ -213,18 +243,37 @@ class SampleMetricEvalServerHook(SyncServerHook):
         server_handler.recv_metrics = None
         server_handler.recv_clean_mask = None
 
+        server_handler.est_cid_noise = [0] * server_handler.args.num_clients
+
         self.gmm_threshold = 0.5
+        self.window_sz = 0
 
     def on_global_update_start(self, server_handler, *args, **kwargs):
-        server_handler.clean_guids, \
-            server_handler.noisy_guids, \
-                    server_handler.overall_guids, \
-                         server_handler.overall_probs = self.central_sieving(
-                            server_handler,
-                            server_handler.recv_metrics, 
-                            server_handler.recv_guids, 
-                            server_handler.recv_clean_mask
-                        )
+        if server_handler.round < server_handler.args.sniffing_round + server_handler.args.warmup_round: # update the noise estimation
+            gmm_model, server_handler.clean_guids, \
+                server_handler.noisy_guids, \
+                        server_handler.overall_guids, \
+                            server_handler.overall_probs = self.central_sieving(
+                                server_handler,
+                                server_handler.recv_metrics, 
+                                server_handler.recv_guids, 
+                                server_handler.recv_clean_mask
+                            )
+            self.client_noise_sniffing(server_handler, gmm_model, server_handler.recv_cid_list, server_handler.recv_metrics)
+        else:
+            self.central_sieving(
+                server_handler,
+                server_handler.recv_metrics, 
+                server_handler.recv_guids, 
+                server_handler.recv_clean_mask
+            )
+        
+    def client_noise_sniffing(self, server_handler, gmm_model: GaussianMixture, recv_cid_list, recv_metrics, *args, **kwargs):
+        for cid, metrics in zip(recv_cid_list,recv_metrics):
+            probs = gmm_model.predict_proba(metrics.reshape((-1, 1)))
+            probs = probs[:,gmm_model.means_.argmin()]
+            preds = (probs < self.gmm_threshold) # 0: clean, 1: noisy
+            server_handler.est_cid_noise[cid] = preds.mean()
 
     def central_sieving(self, server_handler, recv_metrics, recv_guids, recv_clean_mask):
         # update the metrics
@@ -237,16 +286,15 @@ class SampleMetricEvalServerHook(SyncServerHook):
         df = self.metric_dict2df(server_handler.metrics_container)
         df["metric"] = df["metric_raw"] 
 
-        window_sz = 5
-        df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= window_sz)
+        df["selected"] = df["uploaded_round"].apply(lambda x: server_handler.round - x <= self.window_sz)
         gmm_metrics = df[(df["selected"] == True)]["metric"].to_numpy()
         gmm_y_true = df[(df["selected"] == True)]["is_clean"].to_numpy()
         gmm_guids = df[(df["selected"] == True)]["guid"].to_numpy()
 
-        y_pred, probs = self.gmm(gmm_metrics)
+        gmm_model, y_pred, probs = self.gmm(gmm_metrics)
 
         server_handler._LOGGER.info(
-            f"Round [{server_handler.round}/{server_handler.global_round}] {window_sz} window cs, "
+            f"Round [{server_handler.round}/{server_handler.global_round}] {self.window_sz} window cs, "
             f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
             f"gmm {self.gmm_threshold}, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.2f}%, "
             f"recall: {recall_score(gmm_y_true,y_pred)*100:.2f}%, "
@@ -289,31 +337,7 @@ class SampleMetricEvalServerHook(SyncServerHook):
             f"f1_score: {f1_score(y_true,y_pred)*100:.2f}%"
         )
 
-        # gmm_test = df[(df["uploaded_round"] == server_handler.round)]["metric"].to_numpy()
-        # gmm_y_true = df[(df["uploaded_round"] == server_handler.round)]["is_clean"].to_numpy()
-        # y_pred, probs = self.gmm(gmm_metrics, gmm_test)
-
-        # server_handler._LOGGER.info(
-        #     f"Peer Round [{server_handler.round}/{server_handler.global_round}] server sieving, "
-        #     f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
-        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.2f}%, "
-        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.2f}%, "
-        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.2f}%, "
-        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.2f}%"
-        # )
-
-        # y_pred, probs = self.gmm(gmm_test)
-
-        # server_handler._LOGGER.info(
-        #     f"Self Round [{server_handler.round}/{server_handler.global_round}] server sieving, "
-        #     f"{server_handler.args.metric_model} {server_handler.args.cs_metric} "
-        #     f"gmm 0.5, accuracy: {accuracy_score(gmm_y_true,y_pred)*100:.2f}%, "
-        #     f"recall: {recall_score(gmm_y_true,y_pred)*100:.2f}%, "
-        #     f"percision: {precision_score(gmm_y_true,y_pred)*100:.2f}%, "
-        #     f"f1_score: {f1_score(gmm_y_true,y_pred)*100:.2f}%"
-        # )
-
-        return clean_guids, noisy_guids, gmm_guids, overall_probs
+        return gmm_model, clean_guids, noisy_guids, gmm_guids, overall_probs
     
     def gmm(self, gmm_input, gmm_test=None):
         gmm = GaussianMixture(n_components=2,max_iter=50,tol=1e-2,reg_covar=5e-4)
@@ -322,11 +346,9 @@ class SampleMetricEvalServerHook(SyncServerHook):
             probs = gmm.predict_proba(gmm_test.reshape((-1, 1)))
         else:
             probs = gmm.predict_proba(gmm_input.reshape((-1, 1)))
-        #print("prob1=", prob)
-        #print("gmm.means_.argmin()=", gmm.means_.argmin())
         probs = probs[:,gmm.means_.argmin()] #属于小loss的概率是多少 获得的是真实无噪声样本的概率是多少 该样本无噪声的概率是多少
         y_pred = (probs >= self.gmm_threshold)
-        return y_pred, probs
+        return gmm, y_pred, probs
     
     def sample_selection(self, metrics_container, guids, pred, probs):
         for g, p, c in zip(guids, pred, probs):

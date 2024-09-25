@@ -76,20 +76,9 @@ def read_fednll_args():
 
     # ----FedRobust args----
     parser.add_argument(
-        "--warmup_round", type=int, default=0, help="The warmup round."
-    )
-    parser.add_argument(
-        "--n_sys_sniffing_per_client", type=int, default=0, help="The system sniffing iteration of each client."
-    )
-    parser.add_argument(
         "--use_cs", action="store_true", help="Whether to use CS model."
     )
-    parser.add_argument(
-        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl", "loss_ema"], default="loss"
-    )
-    parser.add_argument(
-        "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
-    )
+    
     parser.add_argument(
         "--loss", choices=['mask_out_loss', "naive_pseudo_label_loss", "truncation_loss"], help="Which loss to use for cs."
     )
@@ -97,15 +86,7 @@ def read_fednll_args():
     parser.add_argument(
         "--local_ema", action="store_true", help="Whether use local ema model for metric evalutaion."
     )
-    parser.add_argument(
-        "--local_ema_beta", type=float, help="The beta for local ema model.", default=0.99
-    )
-    parser.add_argument(
-        "--local_ema_plus_global", action="store_true", help="Whether use global model to average local ema model."
-    )
-    parser.add_argument(
-        "--local_ema_plus_global_decay", type=float, help="Decay for global -> local EMA.", default=0.9
-    )
+    
 
     # ----Locla Mixup options----
     parser.add_argument(
@@ -139,10 +120,34 @@ def read_fednll_args():
     parser.add_argument(
         "--use_fednll", action="store_true", help="Whether to use Orchestra model."
     )
+    parser.add_argument(
+        "--warmup_round", type=int, default=0, help="The warmup round."
+    )
+    parser.add_argument(
+        "--n_sys_sniffing_per_client", type=int, default=0, help="The system sniffing iteration of each client."
+    )
+    parser.add_argument(
+        "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl", "loss_ema"], default="loss"
+    )
+    parser.add_argument(
+        "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
+    )
+    parser.add_argument(
+        "--local_ema_plus_global", action="store_true", help="Whether use global model to average local ema model."
+    )
+    parser.add_argument(
+        "--local_ema_plus_global_decay", type=float, help="Decay for global -> local EMA.", default=0.9
+    )
+    parser.add_argument(
+        "--local_ema_beta", type=float, help="The beta for local ema model.", default=0.99
+    )
 
     # ----Restore options----
     parser.add_argument(
         "--restore", action="store_true", help="Whether to restore training."
+    )
+    parser.add_argument(
+        "--ckpt", action="store_true", help="Whether to check point training."
     )
     parser.add_argument(
         "--ckpt_dir", default=None, type=str, help="Path for ckpt dir."
@@ -151,13 +156,27 @@ def read_fednll_args():
         "--ckpt_interval", default=150, type=int, help="Round interval for ckpt."
     )
 
+    parser.add_argument(
+        "--ssl_method", type=str, help="The method for self-supervised learning.", choices=["orchestra", "simsiam", "byol", "simplessl", "fedprox_like"], default="orchestra"
+    )
+    parser.add_argument(
+        "--ssl_weight", type=float, help="The weight for self-supervised learning loss.", default=1.0
+    )
+    parser.add_argument(
+        "--sl_weight", type=float, help="The weight for supervised learning loss.", default=1.0
+    )
+    parser.add_argument(
+        "--ssl2sl_reg_weight", type=float, help="The weight for ssl2sl regulizer.", default=1.0
+    )
+    parser.add_argument(
+        "--confi_gamma", type=float, help="The ema weight for max-confidence & confidence.", default=0.999
+    )
+    
     
     # todo
     parser.add_argument(
         "--metric_ema_gamma", type=float, default=0.7, help="The gamma for sample ema metric."
     )
-    
-    
     
     parser.add_argument(
         "--global_ema", action="store_true", help="Whether use global ema model."

@@ -35,7 +35,7 @@ class AverageMeter(object):
         self.val = val
         self.sum += val * n
         self.count += n
-        self.avg = self.sum / self.count
+        self.avg = self.sum / (self.count + 1e-8)
 
 
 def setup_seed(seed: int = 0):

@@ -76,13 +76,13 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
         self.register_hooks(TestHook(), None, "LOWEST")
         self.register_hooks(GlobalGradNormMonitorHook(), None, "LOWEST")
         if self.args.use_fedprox:
-            if self.args.fedprox_mu == "constant":
+            if self.args.fedprox_mu_scheduler == "constant":
                 self.register_hooks(
-                    FedProxMuConstantScheduler(self.args),
+                    FedProxMuConstantScheduler(self.args, init_mu=self.args.fedprox_mu),
                     "fedprox_mu_scheduler",
                     "LOWEST",
                 )
-            elif self.args.fedprox_mu == "adaptive":
+            elif self.args.fedprox_mu_scheduler == "adaptive":
                 self.register_hooks(
                     FedProxGlobalAdaptiveMuScheduler(
                         self.args

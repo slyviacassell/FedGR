@@ -1,0 +1,206 @@
+import sys
+import argparse
+import os
+import random
+import numpy as np
+
+from typing import List
+from copy import deepcopy
+
+import torch
+from torch import nn
+from torch.utils.data import Dataset, DataLoader
+import torchvision
+from torchvision import transforms
+import torch.nn.functional as TF
+
+from fedlab.core.server.manager import SynchronousServerManager
+
+from fedlab.core.client.trainer import SerialClientTrainer
+from fedlab.contrib.algorithm.basic_server import SyncServerHandler
+from fedlab.core.network import DistNetwork
+from fedlab.utils import Logger, Aggregators, SerializationTool
+
+sys.path.append(os.getcwd())
+from fednoisy.data.NLLData import functional as nllF
+from fednoisy.data import (
+    CLASS_NUM,
+    TRAIN_SAMPLE_NUM,
+    TEST_SAMPLE_NUM,
+    CIFAR10_TRANSITION_MATRIX,
+    NORM_VALUES,
+)
+
+from fednoisy.utils.misc import AverageMeter
+from fednoisy.utils import misc as misc
+from fednoisy.utils.wandb_logger import WandbLogger
+from fednoisy.utils.ema import EMA
+
+from fednoisy.core import SynServerAlogrithmBase
+from fednoisy.core.hooks import (
+    TestHook,
+    GlobalGradNormMonitorHook,
+    SyncServerEMAHook,
+)
+from fednoisy.algorithms.flnl.standalone.fedap import FedAPServerHandler
+from fednoisy.algorithms.flnl.hooks import (
+    SampleMetricEvalServerHook,
+    LabelNoiseMonitor,
+    DatasetCartography,
+    ReInitNetworkHook,
+)
+from fednoisy.algorithms.flnl.standalone.fednll.hooks import (
+    GlobalOrchestra,
+    FedNLLServerCheckPointHook,
+)
+
+
+class FedAPNLLServerHandler(FedAPServerHandler):
+    def __init__( 
+        self,
+        model: torch.nn.Module,
+        global_round: int,
+        sample_ratio: float,
+        nll_name: str = None,
+        cuda: bool = True,
+        device: str = None,
+        logger: Logger = None,
+        wandb_logger: WandbLogger=None,
+        args=None,
+    ):
+        super(FedAPNLLServerHandler, self).__init__(
+            model, global_round, sample_ratio, nll_name, cuda, device, logger, wandb_logger, args
+        )
+
+    def register_orchestra_hooks(self):
+        self.register_hooks(GlobalOrchestra(), "global_orchestra", "LOWEST")
+    
+    def register_ssl_hooks(self):
+        if self.args.ssl_method == "orchestra":
+            self.register_orchestra_hooks()
+        elif self.args.ssl_method == "simsiam":
+            pass
+        elif self.args.ssl_method == "byol":
+            pass
+        elif self.args.ssl_method == "simplessl":
+            pass
+        elif self.args.ssl_method == "fedprox_like":
+            pass
+        else:
+            raise ValueError(f"Unrecognized ssl_method: {self.args.ssl_method}")
+
+    def set_hooks(self):
+        self.register_hooks(SampleMetricEvalServerHook(), None, "LOWEST")
+
+        if self.args.ckpt:
+            self.register_hooks(FedNLLServerCheckPointHook(ckpt_interval=self.args.ckpt_interval), 'srv_ckpt', "LOWEST")
+
+        if self.args.noise_mode != "clean":
+            self.register_hooks(LabelNoiseMonitor(), None, "LOWEST")
+
+        self.register_ssl_hooks()
+
+        super(FedAPNLLServerHandler, self).set_hooks()
+
+        if type(self) ==  FedAPNLLServerHandler:
+            self._LOGGER.info(
+                f"Server Registered hooks: {self.hooks_dict.keys()}"
+            )
+
+    def unpacking_other_info(self, buffer):
+        if self.args.ssl_method == "orchestra":
+            self.local_centroids = [elem[7] for elem in buffer]
+
+    def packing_other_info(self, down_pack):
+        if self.args.ssl_method == "orchestra":
+            down_pack = down_pack + [self.global_centroids]
+        return down_pack
+
+    def global_update(self, buffer):
+        # the self.round increases after global updating
+        parameters_list = [elem[0] for elem in buffer]
+        weights = [elem[1] for elem in buffer]
+        local_losses = [elem[2] for elem in buffer] # for fedprox adaptive mu scheduler
+        self.recv_cid_list = [elem[3].int().item() for elem in buffer]
+        self.recv_metrics = [elem[4].numpy() for elem in buffer]
+        self.recv_guids = [elem[5].numpy() for elem in buffer]
+        self.recv_clean_mask = [elem[6].numpy() for elem in buffer]
+        self.unpacking_other_info(buffer)
+
+        self.on_global_update_start()
+
+        if self.hooks_dict.get("datamap", None) is not None:
+            self.cid_list = self.recv_cid_list
+
+        if self.args.use_fedprox:
+            self.call_hook("step", "fedprox_mu_scheduler", local_losses, weights)
+        serialized_parameters = Aggregators.fedavg_aggregate(parameters_list, weights)
+        self.set_model(serialized_parameters)
+        self._LOGGER.info(
+            f"Round [{self.round}/{self.global_round}] server global update done. {self.recv_cid_list}"
+        )
+
+        self.on_global_update_end()
+
+    @property
+    def global_centroids(self):
+        return self.call_hook("get_centroids", "global_orchestra")
+
+    @property
+    def downlink_package(self) -> List[torch.Tensor]:
+        if self.args.use_fedprox:
+            mu = self.call_hook("get_mu", "fedprox_mu_scheduler")
+        else:
+            mu = 0.0
+        down_pack = [self.model_parameters, mu]
+
+        down_pack = down_pack + [
+            torch.from_numpy(self.clean_guids), 
+            torch.from_numpy(self.noisy_guids), 
+            torch.from_numpy(self.overall_guids),
+            torch.from_numpy(self.overall_probs),
+        ]
+
+        down_pack = self.packing_other_info(down_pack)
+
+        return down_pack
+    
+    def sample_clients(self):
+        if self.round < self.args.sniffing_round: # sys sniffing
+            self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server sys sniffing")
+            if self.num_clients_per_round < self.num_clients:
+                # random sample the clients without replacements
+                if self.round == 0:
+                    self.permutaion_ptr = 0
+                    self.permutation_set = list(range(self.num_clients))
+                    random.shuffle(self.permutation_set)
+
+                selection = self.permutation_set[self.permutaion_ptr*self.num_clients_per_round:(1+self.permutaion_ptr)*self.num_clients_per_round]
+                    
+                if len(self.permutation_set) <= (1+self.permutaion_ptr)*self.num_clients_per_round:
+                    self.permutation_set = list(range(self.num_clients))
+                    random.shuffle(self.permutation_set)
+                    self.permutaion_ptr = 0
+                    self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server permutation init for next")
+                else:
+                    self.permutaion_ptr += 1
+            else:
+                selection = random.sample(range(self.num_clients), self.num_clients_per_round)
+        elif self.round < self.args.warmup_round + self.args.sniffing_round: # warmup
+            self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server warmup")
+            
+            weights = 1. - np.array(self.est_cid_noise)
+            # mask out the clients with high noise
+            # high_noise_mask = weights < 0.2
+            # weights[high_noise_mask] = 0.0
+            weights = weights / weights.sum()
+            selection = np.random.choice(self.num_clients, self.num_clients_per_round, replace=False, p=weights)
+            selection = selection.tolist()
+
+            # selection = random.sample(range(self.num_clients), self.num_clients_per_round) # random selection
+        else: # collaborative training
+            self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server collaborative training")
+            selection = random.sample(range(self.num_clients), self.num_clients_per_round) # random selection
+        
+        return sorted(selection)
+    
