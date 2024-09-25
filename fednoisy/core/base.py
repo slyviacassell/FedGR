@@ -33,8 +33,8 @@ class AlogrithmBase:
                 Lower value means higher priority.
         """
         assert isinstance(hook, Hook)
-        if hasattr(hook, 'priority'):
-            raise ValueError('"priority" is a reserved attribute for hooks')
+        # if hasattr(hook, 'priority'):
+            # raise ValueError('"priority" is a reserved attribute for hooks')
         priority = get_priority(priority)
         hook.priority = priority  # type: ignore
         hook.name = name if name is not None else type(hook).__name__

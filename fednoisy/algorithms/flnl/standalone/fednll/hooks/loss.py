@@ -420,21 +420,6 @@ class SemiSupLoss(SerialClientTrainerHook):
     def __init__(self) -> None:
         super().__init__()
 
-    def on_init(self, client_trainer, *args, **kwargs):
-        self.est_cid_noise = [0] * client_trainer.args.num_clients
-        self.cid_n_samples = [0] * client_trainer.args.num_clients
-
-    def on_local_process_start(self, client_trainer, *args, **kwargs):
-        self.get_est_cid_noise(client_trainer)
-
-    def get_est_cid_noise(self, client_trainer, *args, **kwargs):
-        for cid in client_trainer.id_list:
-            dataset = client_trainer.dataset.get_dataset(cid=cid, train=True)
-            n_mask = [True if g in client_trainer.overall_noisy_guids else False for g in dataset.guids]
-            self.est_cid_noise[cid] = sum(n_mask)/len(n_mask)
-
-            self.cid_n_samples[cid] = len(n_mask)
-
     def loss(self, client_trainer, outputs, targets, *args, **kwargs):
         if client_trainer.round < client_trainer.args.sniffing_round:
             loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"])

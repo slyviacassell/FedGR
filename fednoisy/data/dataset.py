@@ -227,6 +227,7 @@ class FedNLLDataset(FedDataset):
             num_workers=num_workers,
             pin_memory=True, 
             persistent_workers=True,
+            drop_last=True, # for batchnorm
         )
         return data_loader
     
@@ -249,8 +250,9 @@ class FedNLLDataset(FedDataset):
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
-            # pin_memory=True, # memory leak for fedlab scale
+            pin_memory=True,
             persistent_workers=True,
+            drop_last=True, # for batchnorm
         )
         return data_loader
 

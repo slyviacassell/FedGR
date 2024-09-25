@@ -86,6 +86,7 @@ from fednoisy.algorithms.flnl.standalone.fednll.hooks import (
     SimSiamLoss,
     BYOLLoss,
     SimpleSSLLoss,
+    SLWeightSchedulerHook,
 )
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -198,6 +199,7 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
             self.register_hooks(FedNLLClientCheckPointHook(ckpt_interval=self.args.ckpt_interval), 'cli_ckpt', "LOWEST")
 
         self.register_hooks(SemiSupLoss(), "sl_loss", "LOWEST")
+        self.register_hooks(SLWeightSchedulerHook(), "sl_weight_scheduler", "LOWEST")
         self.register_ssl_hooks()
 
         super(FedAPNLLClientTrainer, self).set_hooks()
@@ -398,8 +400,10 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
             ssl_loss, sl_loss, ssl2sl_reg = self.global_reg_step(batch)
         else:
             raise ValueError(f"Unrecognized ssl method: {self.args.ssl_method}")
+        
+        sl_weight = self.call_hook("step", "sl_weight_scheduler", sl_weight=self.args.sl_weight)
 
-        tot_loss = ssl_loss * self.args.ssl_weight + sl_loss * self.args.sl_weight + ssl2sl_reg * self.args.ssl2sl_reg_weight
+        tot_loss = ssl_loss * self.args.ssl_weight + sl_loss * sl_weight + ssl2sl_reg * self.args.ssl2sl_reg_weight
         return tot_loss, ssl_loss, sl_loss, ssl2sl_reg
     # === Forward Step ===
         

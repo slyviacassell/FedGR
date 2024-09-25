@@ -116,7 +116,6 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
 
     def __getstate__(self):
         # 只序列化除 `_blacklist` 中的字段以外的所有字段
-        # todo: gpu -> cpu
         ckpt_hooks = {}
         for hook_name, hook in self.hooks_dict.items():
             if isinstance(hook, SerialClientLocalEMAHook):
