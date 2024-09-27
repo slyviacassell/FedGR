@@ -1,2 +1,2 @@
-from .client import FedAPClientTrainer
+from .client import FedAPClientTrainer, FedAPDivideMixClientTrainer
 from .server import FedAPServerHandler

@@ -41,7 +41,8 @@ from fednoisy.algorithms.flnl.scale.fedap_cs import (
 )
 from fednoisy.algorithms.flnl.scale.fedap import (
     FedAPClientTrainer,
-    FedAPServerHandler
+    FedAPServerHandler,
+    FedAPDivideMixClientTrainer,
 )
 from fednoisy.algorithms.flnl.misc import read_fednll_args
 from fednoisy.data.dataset import FedNLLDataset
@@ -83,7 +84,10 @@ def main():
 
     assert args.num_clients == (args.world_size - 1) * args.num_clients_per_gpu
 
-    model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
+    if args.dividemix:
+        model = build_multi_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
+    else:
+        model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
     
     mp.spawn(scale, args=(args, cmp_out_dir, model), nprocs=args.world_size, join=True)
 
@@ -97,7 +101,7 @@ def scale(rank, args, cmp_out_dir, model):
             group=args.time_stamp+"-"+args.wandb_group,
             tags=args.wandb_tags,
             job_type=args.wandb_job_type,
-            name="server" if rank == 0 else f"client-gpu-{rank-1}",
+            name="server" if rank == 0 else f"client-rank-{rank-1}",
         )
     else:
         wandb_logger = None
@@ -133,10 +137,12 @@ def scale(rank, args, cmp_out_dir, model):
         sleep(2)
         server_manager.run()
     else:
-        print(f"Start gpu {rank-1}")    
+        n_devices = torch.cuda.device_count()
+        cuda_device = f"cuda:{(rank-1)%n_devices}"
+        print(f"Start rank {rank-1} on gpu {cuda_device}")    
         client_logger = Logger( # todo integrate multiprocessing log files
-            log_name=f"ClientTrainer-gpu-{rank-1}",
-            log_file=os.path.join(cmp_out_dir, f"client-gpu-{rank-1}.log"),
+            log_name=f"ClientTrainer-rank-{rank-1}",
+            log_file=os.path.join(cmp_out_dir, f"client-rank-{rank-1}.log"),
         )
 
         network = DistNetwork(
@@ -148,12 +154,16 @@ def scale(rank, args, cmp_out_dir, model):
 
         if args.use_cs:
             trainer = FedAPCSClientTrainer(
-                model, args.num_clients_per_gpu, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args, device=f"cuda:{rank-1}",
+                model, args.num_clients_per_gpu, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args, device=cuda_device,
+            )
+        elif args.dividemix:
+            trainer = FedAPDivideMixClientTrainer(
+                model, args.num_clients_per_gpu, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args, device=cuda_device,
             )
         else:
             # ---- FedAvg & FedAvg-RobustLoss ----
             trainer = FedAPClientTrainer(
-                model, args.num_clients_per_gpu, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args, device=f"cuda:{rank-1}",
+                model, args.num_clients_per_gpu, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args, device=cuda_device,
             )  # client
 
         # ==== client trainer dataset ====

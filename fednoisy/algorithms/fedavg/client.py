@@ -8,6 +8,7 @@ from typing import Dict, Tuple, List, Optional
 from sklearn.metrics import confusion_matrix, recall_score, accuracy_score, auc, precision_score, f1_score
 from sklearn.mixture import GaussianMixture
 from collections import Counter
+import time
 
 from torch import nn
 from torch.utils.data import DataLoader
@@ -654,9 +655,15 @@ class FedNLLFedAvgDivideMixClientTrainer(FedNLLFedAvgClientTrainer):
             )
             
             if cur_round < self.args.dividemix_warmup_round:
+                eval_loader = self.dataset.get_dataloader(
+                    cid=cid, train=True, batch_size=self.batch_size
+                )
                 pack = self.warmup(model_parameters, data_loader)
             else:
-                pack = self.train(model_parameters, data_loader)
+                eval_loader = self.dataset.get_dataloader(
+                    cid=cid, train=True, batch_size=128
+                )
+                pack = self.train(model_parameters, data_loader, eval_loader)
 
             pack.append(cid)
 
@@ -667,7 +674,7 @@ class FedNLLFedAvgDivideMixClientTrainer(FedNLLFedAvgClientTrainer):
             )
             self.cache.append(pack)
 
-    def train(self, model_parameters, train_loader):
+    def train(self, model_parameters, train_loader, eval_loader):
         self.set_model(model_parameters)
         self.setup_optim(
             self.epochs, self.batch_size, self.lr, self.weight_decay, self.momentum
@@ -686,19 +693,18 @@ class FedNLLFedAvgDivideMixClientTrainer(FedNLLFedAvgClientTrainer):
             self._LOGGER.info(
                 f"Round {self.round} client-{self.cur_cid} local train epoch [{epoch}/{self.epochs}]"
             )
-            prob_dict1, label_guids1, unlabel_guids1 = self.update_probabilties_split_data_indices(self._model.models[0], loss_history1, train_loader)
-            prob_dict2, label_guids2, unlabel_guids2 = self.update_probabilties_split_data_indices(self._model.models[1], loss_history2, train_loader)
+            prob_dict1, label_guids1, unlabel_guids1 = self.update_probabilties_split_data_indices(self._model.models[0], loss_history1, eval_loader)
+            prob_dict2, label_guids2, unlabel_guids2 = self.update_probabilties_split_data_indices(self._model.models[1], loss_history2, eval_loader)
 
             if len(label_guids2) == 0 or len(unlabel_guids2) == 0: # when gmm failed to find any labeled or unlabeled samples, simply warmup
                 print('gmm f@cked',len(label_guids2), len(unlabel_guids2))
                 self.warmup(model_parameters, train_loader)
             else:
-
                 labeled_loader1 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids2, sample_prob=prob_dict2 
-                )
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids2, sample_prob=prob_dict2, drop_last=False
+                ) # the first epoch for data loader is very slow. hence, each epoch of dividemix would cost much more time
                 unlabeled_loader1 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids2, sample_prob=prob_dict2
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids2, sample_prob=prob_dict2, drop_last=False
                 )
                 self.divide_mix(self.round, self._model.models[0],self._model.models[1],self.optimizer1,labeled_loader1,unlabeled_loader1,criterion,0)
 
@@ -708,10 +714,10 @@ class FedNLLFedAvgDivideMixClientTrainer(FedNLLFedAvgClientTrainer):
             else:
 
                 labeled_loader2 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids1, sample_prob=prob_dict1
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids1, sample_prob=prob_dict1, drop_last=False
                 )
                 unlabeled_loader2 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids1, sample_prob=prob_dict1
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids1, sample_prob=prob_dict1, drop_last=False
                 )
                 self.divide_mix(self.round, self._model.models[1],self._model.models[0],self.optimizer2,labeled_loader2,unlabeled_loader2,criterion,1)
 
@@ -908,7 +914,7 @@ class FedNLLFedAvgDivideMixClientTrainer(FedNLLFedAvgClientTrainer):
 
         # Fit a two-component GMM to the loss
         input_loss = losses.reshape(-1, 1)
-        gmm = GaussianMixture(n_components=2, max_iter=100, tol=1e-2, reg_covar=5e-4)
+        gmm = GaussianMixture(n_components=2, max_iter=10, tol=1e-2, reg_covar=5e-4)
         gmm.fit(input_loss)
         prob = gmm.predict_proba(input_loss)
         prob = prob[:, gmm.means_.argmin()]

@@ -111,7 +111,10 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
             "cur_payload", 
             "cache",
             "hooks_dict",
-            "_hooks"
+            "_hooks",
+            "device",
+            "is_prox",
+
         ]
 
     def __getstate__(self):
@@ -134,6 +137,7 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         valid_state = {k: v for k, v in state.items() if k != "ckpt_hooks"}
         self.__dict__.update(valid_state)
 
+        # restore hooks
         self.hooks_dict = OrderedDict()
         self._hooks = []
         for k,v in state["ckpt_hooks"].items():
@@ -141,9 +145,12 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
     
     def load_state(self, state):
         vaild_state = {k: v for k, v in state.items() if k not in ["_hooks", "hooks_dict"]}
+        # append hooks
         for k,v in state["hooks_dict"].items():
             self.register_hooks(v, k, v.priority)
+            self._LOGGER.info(f"Load hook: {k}")
         self.__dict__.update(vaild_state)
+        self._LOGGER.info(f"Load state: {vaild_state.keys()}")
 
         self.model.to(self.device)
         self.cur_global_model.to(self.device)

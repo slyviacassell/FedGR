@@ -76,17 +76,15 @@ from fednoisy.algorithms.flnl.hooks import (
     ClientLabelDistriEMA,
 )
 from fednoisy.algorithms.flnl.standalone.fednll.hooks import (
-    GlobalOrchestra,
     LocalOrchestra,
     FedNLLClientCheckPointHook,
-    SupOrchestraLoss,
-    SemiOrchestraLoss,
     OrchestraLoss,
     SemiSupLoss,
     SimSiamLoss,
     BYOLLoss,
     SimpleSSLLoss,
     SLWeightSchedulerHook,
+    SharedAnchorHook,
 )
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -112,6 +110,7 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
     # === SSL Hooks ===
     def register_fedprox_like_hooks(self):
         self.register_hooks(SimpleSSLLoss(), "ssl_loss", "LOWEST")
+        self.register_hooks(SharedAnchorHook(), "shared_anchor", "LOWEST")
 
     def register_simple_ssl_hooks(self):
         # assert self.args.local_ema, "Local EMA should be enabled for Simple SSL"
@@ -149,10 +148,23 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
     
     # === utils ===
     def get_dataloader(self):
-        if self.args.ssl_method == "orchestra" or self.args.ssl_method == "simplessl" or self.args.ssl_method == "fedprox_like":
+        if self.args.ssl_method == "orchestra" or self.args.ssl_method == "simplessl":
             data_loader = self.dataset.get_semiws_dataloader(cid=self.g_cid, train=True, batch_size=self.batch_size)
         elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "byol":
             data_loader = self.dataset.get_dividemix_dataloader(cid=self.g_cid, train=True, batch_size=self.batch_size)
+        elif self.args.ssl_method == "fedprox_like":
+            data_loader = self.dataset.get_semiws_dataloader(cid=self.g_cid, train=True, batch_size=self.batch_size)
+            # todo
+            # if self.round < self.args.warmup_round + self.args.sniffing_round:
+            #     data_loader = self.dataset.get_semiws_dataloader(cid=self.g_cid, train=True, batch_size=self.batch_size)
+            # else:
+            #     data_loader = self.dataset.get_dividemix_dataloader(
+            #         cid=self.g_cid, 
+            #         train=True,
+            #         batch_size=self.batch_size,
+                    
+            #     )
+            
         return data_loader
     
     def packing_local_results(self, local_results: List):
@@ -181,7 +193,9 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
         vaild_state = {k: v for k, v in state.items() if k not in ["_hooks", "hooks_dict"]}
         for k,v in state["hooks_dict"].items():
             self.register_hooks(v, k, v.priority)
+            self._LOGGER.info(f"Load hook: {k}")
         self.__dict__.update(vaild_state)
+        self._LOGGER.info(f"Load state: {vaild_state.keys()}")
 
         self.model.to(self.device)
         for hook_name, hook in self.hooks_dict.items():
@@ -243,7 +257,7 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
         self.on_local_process_end()
 
     # === Forward Step ===
-    def global_reg_step(self, batch, *args, **kwargs): # tmp test
+    def fedprox_like_step(self, batch, *args, **kwargs):
         imgs_w, imgs_s, labels, noisy_labels, guids = batch["img_w"], batch["img_s"], batch["label"], batch["noisy_label"], batch["guid"]
         clean_mask = noisy_labels == labels
         if self.cuda:
@@ -254,10 +268,11 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
         outputs_s = self.model(imgs_s, return_dict=True, full_heads=True)
         with torch.no_grad():
             self.cur_global_model.eval()
-            outputs_w = self.cur_global_model(imgs_w, return_dict=True, full_heads=True)
+            # outputs_w = self.cur_global_model(imgs_w, return_dict=True, full_heads=True)
+            outputs_w = self.anchor_model(imgs_w, return_dict=True, full_heads=True)
         targets = {"cls_head": noisy_labels, "simplessl_head": outputs_w["simplessl_head"]}
         ssl_loss, ssl2sl_reg = self.call_hook("loss", "ssl_loss", outputs_s, targets)
-        sl_loss  = self.call_hook("loss", "sl_loss", outputs_s, targets)
+        sl_loss  = self.call_hook("loss", "sl_loss", outputs_s, targets, guids=guids, labels=labels, clean_mask=clean_mask)
 
         return ssl_loss, sl_loss, ssl2sl_reg
 
@@ -397,7 +412,7 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
         elif self.args.ssl_method == "simplessl":
             ssl_loss, sl_loss, ssl2sl_reg = self.simplessl_step(batch)
         elif self.args.ssl_method == "fedprox_like":
-            ssl_loss, sl_loss, ssl2sl_reg = self.global_reg_step(batch)
+            ssl_loss, sl_loss, ssl2sl_reg = self.fedprox_like_step(batch)
         else:
             raise ValueError(f"Unrecognized ssl method: {self.args.ssl_method}")
         

@@ -156,6 +156,7 @@ def read_fednll_args():
         "--ckpt_interval", default=150, type=int, help="Round interval for ckpt."
     )
 
+    # ----SSL options----
     parser.add_argument(
         "--ssl_method", type=str, help="The method for self-supervised learning.", choices=["orchestra", "simsiam", "byol", "simplessl", "fedprox_like"], default="orchestra"
     )
@@ -171,13 +172,35 @@ def read_fednll_args():
     parser.add_argument(
         "--confi_gamma", type=float, help="The ema weight for max-confidence & confidence.", default=0.999
     )
+
+    # ----DivideMix options----
+    parser.add_argument(
+        "--dividemix", action="store_true",
+    )
+    parser.add_argument(
+        "--dividemix_warmup_round", type=int, help="The warmup round for dividemix."
+    )
+    parser.add_argument(
+        "--dividemix_temperature", type=float, default=0.5, help="The temperature for softmax sharping"
+    )
+    parser.add_argument(
+        "--dividemix_mixup_alpha", type=float, default=4, help="The alpha of beta distribution in mixup"
+    )
+    parser.add_argument(
+        "--gmm_threshold", type=float, default=0.5, help="The threshold for GMM"
+    )
+    parser.add_argument(
+        "--dividemix_lambda_u", type=float, default=25, help="Weight for unsupervised loss"
+    )
+    parser.add_argument(
+        "--disable_asym_penalty", action="store_true", help="Whether to disable the penalty for asymmetric noise"
+    )
     
     
     # todo
     parser.add_argument(
         "--metric_ema_gamma", type=float, default=0.7, help="The gamma for sample ema metric."
     )
-    
     parser.add_argument(
         "--global_ema", action="store_true", help="Whether use global ema model."
     )

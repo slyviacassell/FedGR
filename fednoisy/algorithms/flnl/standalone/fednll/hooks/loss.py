@@ -56,11 +56,6 @@ class SemiSLSSLLoss(SerialClientTrainerHook):
     def __init__(self) -> None:
         super().__init__()
 
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        if not hasattr(self, "cid_n_samples"):
-            self.cid_n_samples = [0] * len(state['est_cid_noise'])
-
     def on_init(self, client_trainer, *args, **kwargs):
         # client_trainer.max_confis_ema = {cid: torch.ones(1, device=client_trainer.device)/CLASS_NUM[client_trainer.args.dataset] for cid in range(client_trainer.num_clients)}
         # client_trainer.confis_ema = {cid: (torch.ones(CLASS_NUM[client_trainer.args.dataset], device=client_trainer.device)/CLASS_NUM[client_trainer.args.dataset]) for cid in range(client_trainer.num_clients)}
@@ -420,13 +415,134 @@ class SemiSupLoss(SerialClientTrainerHook):
     def __init__(self) -> None:
         super().__init__()
 
+    def on_init(self, client_trainer, *args, **kwargs):
+        self.local_epoch_cnt = 0
+        self.p_meter = AverageMeter()
+
+        self.relabels = {cid: {} for cid in range(client_trainer.num_clients)}
+        self.sample_probs = {}
+
+    def on_local_process_start(self, client_trainer, *args, **kwargs):
+        if client_trainer.round >= client_trainer.args.sniffing_round:
+            self.sample_probs.update({g: c for g,c in zip(client_trainer.overall_guids.tolist(), client_trainer.overall_probs.tolist())})
+
+    def on_training_epoch_start(self, client_trainer, *args, **kwargs):
+        self.p_meter.reset()
+        
+        if client_trainer.round >= client_trainer.args.sniffing_round:
+            if self.local_epoch_cnt == 0: # global model
+                cid = client_trainer.l_cid
+                data_loader = client_trainer.dataset.get_eval_train_dataloader(client_trainer.args.dataset,cid=cid, batch_size=128)
+                # data_loader = client_trainer.dataset.get_semiws_dataloader(cid=cid, train=True, batch_size=128)
+                guids, pseudo_labels = self.online_pseudo_labeling(client_trainer, data_loader, cid)
+                # todo: maintain the pseudo labels
+                self.relabels[cid].update({g: l for g, l in zip(guids, pseudo_labels)})
+
+    def on_training_epoch_end(self, client_trainer, *args, **kwargs):
+        if client_trainer.round >= client_trainer.args.warmup_round + client_trainer.args.sniffing_round:
+            client_trainer._LOGGER.info(
+                f"Round {client_trainer.round} client-{client_trainer.g_cid} p_acc: {self.p_meter.avg*100:.2f}%"
+            ) # will be different due to drop_last
+
+        self.local_epoch_cnt += 1
+        
+        # if client_trainer.round >= client_trainer.args.sniffing_round:
+        #     # if self.local_epoch_cnt == 1:
+        #     cid = client_trainer.l_cid
+        #     data_loader = client_trainer.dataset.get_eval_train_dataloader(client_trainer.args.dataset,cid=cid, batch_size=128)
+        #     # data_loader = client_trainer.dataset.get_semiws_dataloader(cid=cid, train=True, batch_size=128)
+        #     # data_loader = client_trainer.dataset.get_dividemix_dataloader(cid=cid, train=True, batch_size=128)
+        #     guids, pseudo_labels = self.online_pseudo_labeling(client_trainer, data_loader, cid)
+        #     # self.relabels.update({g: l for g, l in zip(guids, pseudo_labels)})
+
+    def on_client_training_end(self, client_trainer, *args, **kwargs):
+        self.local_epoch_cnt = 0
+
+    @torch.no_grad()
+    def online_pseudo_labeling(self, client_trainer, dataloader, cid, *args, **kwargs):
+        gmm_p_meter = AverageMeter()
+        p_meter = AverageMeter()
+
+        model = client_trainer.model
+        model.eval()
+
+        guids_list = []
+        p_targets_list = []
+
+        for batch in dataloader:
+            imgs_w, guids, noisy_targets, targets = batch["img"], batch["guid"], batch["noisy_label"], batch["label"]
+            # imgs_w, guids, noisy_targets, targets, imgs_s = batch["img_w"], batch["guid"], batch["noisy_label"], batch["label"], batch["img_s"]
+            # imgs_w, imgs_s, guids, noisy_targets, targets = batch["img_0"], batch["img_1"], batch["guid"], batch["noisy_label"], batch["label"], batch["img_s"]
+
+            if client_trainer.cuda:
+                imgs_w = imgs_w.to(client_trainer.device)
+                # imgs_s = imgs_s.to(client_trainer.device)
+                noisy_targets = noisy_targets.to(client_trainer.device)
+                targets = targets.to(client_trainer.device)
+
+            outputs_w = model(imgs_w, return_dict=True, full_heads=True)
+            # outputs_s = model(imgs_s, return_dict=True, full_heads=True)
+            logits = outputs_w["cls_head"]["cls_logits"]
+            confis = torch.softmax(logits, dim=1)
+            probs, preds = torch.max(confis, dim=1)
+            mask = (probs > 0.9)
+
+            noisy_mask = torch.tensor([True if g in client_trainer.overall_noisy_guids else False for g in guids.numpy()]).to(client_trainer.device)
+            mask = (mask & noisy_mask)
+
+            noisy_targets[mask] = preds[mask]
+            gmm_p_meter.update(torch.mean((targets[noisy_mask] == noisy_targets[noisy_mask]).float()).item(), len(targets[noisy_mask])+1e-8)
+            p_meter.update(torch.mean((targets[mask] == noisy_targets[mask]).float()).item(), len(targets[mask])+1e-8)
+
+            # hard label
+            mask = (mask & noisy_mask) | (~noisy_mask)
+            p_targets_list += noisy_targets[mask].cpu().tolist() 
+            guids_list += guids[mask].tolist()
+
+        client_trainer._LOGGER.info(
+            f"Round {client_trainer.round} client-{cid} gmm pseudo acc: {gmm_p_meter.avg*100:.2f}%, cnt: {gmm_p_meter.sum:.0f}/{gmm_p_meter.count:.0f}, "
+            f"pseudo acc: {p_meter.avg*100:.2f}%, cnt: {p_meter.sum:.0f}/{p_meter.count:.0f}"
+        )
+
+        model.train()
+
+        return guids_list, p_targets_list
+
     def loss(self, client_trainer, outputs, targets, *args, **kwargs):
         if client_trainer.round < client_trainer.args.sniffing_round:
             loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"])
-            return loss
         elif client_trainer.round < client_trainer.args.warmup_round + client_trainer.args.sniffing_round:
             loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"])
-            return loss
         else:
-            loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"])
-            return loss
+            guids = kwargs["guids"].numpy().tolist()
+            labels = kwargs["labels"]
+            clean_mask  = kwargs["clean_mask"]
+            
+            sup_targets = targets["cls_head"]
+
+            self.p_meter.update(torch.mean(clean_mask.float()).item(), len(clean_mask))
+
+            noisy_mask = torch.tensor([True if g in client_trainer.overall_noisy_guids else False for g in guids]).to(client_trainer.device)
+            noisy_targets = TF.one_hot(sup_targets, num_classes=CLASS_NUM[client_trainer.args.dataset]).float()
+            c_probs = torch.tensor([self.sample_probs.get(g, 1) for g in guids], device=client_trainer.device, dtype=torch.float32).unsqueeze(1)
+            
+            # hard label
+            cid = client_trainer.l_cid
+            p_mask = torch.tensor([True if g in self.relabels[cid] else False for g in guids]).to(client_trainer.device)
+            pseudo_targets = [self.relabels[cid].get(g, sup_targets[i]) for i, g in enumerate(guids)] 
+            pseudo_targets = TF.one_hot(torch.tensor(pseudo_targets).to(client_trainer.device), num_classes=CLASS_NUM[client_trainer.args.dataset]).float()
+
+            pseudo_targets[~noisy_mask] = noisy_targets[~noisy_mask] * c_probs[~noisy_mask] + (1. - c_probs[~noisy_mask]) * pseudo_targets[~noisy_mask]
+
+            logits = outputs["cls_head"]["cls_logits"]
+            
+            mask = p_mask
+
+            loss = -torch.sum(pseudo_targets * torch.log_softmax(logits+1e-10, dim=1), dim=1)
+            
+            if mask.sum() > 0:
+                loss = loss[mask].mean()
+            else:
+                loss = torch.zeros(1, device=client_trainer.device)
+        
+        return loss

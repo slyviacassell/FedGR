@@ -82,6 +82,8 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
             "client_buffer_cache", # since the ckpt is on_global_update_end
             "_hooks",
             "hooks_dict",
+            "device",
+            "nll_name",
         ]
 
     def __getstate__(self):
@@ -110,7 +112,9 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
         vaild_state = {k: v for k, v in state.items() if k not in ["_hooks", "hooks_dict"]}
         for k,v in state["hooks_dict"].items():
             self.register_hooks(v, k, v.priority)
+            self._LOGGER.info(f"Load hook: {k}")
         self.__dict__.update(vaild_state)
+        self._LOGGER.info(f"Load state: {vaild_state.keys()}")
 
         self.model.to(self.device)
         for hook_name, hook in self.hooks_dict.items():

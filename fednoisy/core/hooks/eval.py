@@ -41,11 +41,11 @@ class TestHook(SerialClientTrainerHook, SyncServerHook):
 
     def on_client_training_end(self, client_trainer, *args, **kwargs):
         if self.every_n_round(client_trainer, self.test_interval):
-            return self.eval_fn(client_trainer)
+            self.eval_fn(client_trainer)
     
     def on_global_update_end(self, server_handler, *args, **kwargs):
         if self.every_n_round(server_handler, self.test_interval):
-            return self.eval_fn(server_handler)
+            self.eval_fn(server_handler)
     
     def eval_fn(self, trainer_or_handler):
         model = trainer_or_handler.model

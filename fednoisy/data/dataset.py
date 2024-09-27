@@ -206,7 +206,7 @@ class FedNLLDataset(FedDataset):
     
     #         )
 
-    def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, sample_prob: Dict=None):
+    def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, sample_prob: Dict=None, drop_last=True):
         if train:
             shuffle = True
         else:
@@ -227,7 +227,7 @@ class FedNLLDataset(FedDataset):
             num_workers=num_workers,
             pin_memory=True, 
             persistent_workers=True,
-            drop_last=True, # for batchnorm
+            drop_last=drop_last, # for batchnorm
         )
         return data_loader
     

@@ -185,6 +185,10 @@ trainer.setup_optim(
 print(f"FedNLL scene: {nll_name}")
 pipeline = FedAPStandalone(handler, trainer, args=args, save_best=args.save_best, out_path=cmp_out_dir, wandb_logger=wandb_logger)
 
+if args.restore:
+    print("Verify ckpt")
+    handler.call_hook("eval_fn", "TestHook")
+
 pipeline.main()
 
 if args.use_wandb:

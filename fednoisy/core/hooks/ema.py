@@ -24,7 +24,8 @@ class SerialClientLocalEMAHook(SerialClientTrainerHook):
     
     def on_client_training_start(self, client_trainer, *args, **kwargs):
         local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
-        if client_trainer.args.local_ema_plus_global:
+        # if client_trainer.args.local_ema_plus_global:
+        if client_trainer.args.local_ema_plus_global and client_trainer.args.local_ema:
             local_ema_model.update_moving_average(
                 local_ema_model.ema_model, 
                 local_ema_model.model, # global model, use after setup global model
