@@ -21,7 +21,7 @@ WD_P_NAME=FLNL
 WD_J_TYPE='baseline'
 WD_MODE='offline'
 
-# clothing1m-c${N_CLIENTS}-sr${SR}-iid-real-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r50-s$SEED
+# clothing1m-c${N_CLIENTS}-sr${SR}-dir03-real-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r50-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
 --dataset $DATASET \
 --model $MODEL \
@@ -43,7 +43,7 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --exp_name $EXP_NAME \
 --use_wandb \
 --wandb_project_name $WD_P_NAME \
---wandb_group clothing1m-c${N_CLIENTS}-sr${SR}-iid-real-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r50-s$SEED \
+--wandb_group clothing1m-c${N_CLIENTS}-sr${SR}-dir03-real-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r50-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} real lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE \
 --num_samples 265664

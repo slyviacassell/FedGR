@@ -115,7 +115,7 @@ class FedNLLDataset(FedDataset):
         overall_noisy_ratio /= len(dataset)
         return overall_noisy_ratio
 
-    def get_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2):
+    def get_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4):
         
         if train:
             if self.train_p_map.get(cid, None) is None: # speedup data loader init, more memory usage
@@ -150,7 +150,7 @@ class FedNLLDataset(FedDataset):
 
         return data_loader
     
-    def get_eval_train_dataloader(self, dataset_name, cid=None, batch_size=128, num_workers=2):
+    def get_eval_train_dataloader(self, dataset_name, cid=None, batch_size=128, num_workers=4):
         dataset = self.get_dataset(cid, train=True)
         dataset = deepcopy(dataset)
         dataset.transform = TEST_TRANSFORM[dataset_name] # replace transform
@@ -165,7 +165,7 @@ class FedNLLDataset(FedDataset):
         )
         return data_loader
     
-    def get_overall_dataloader(self,batch_size=64,num_workers=2):
+    def get_overall_dataloader(self,batch_size=64,num_workers=4):
         dataset = OverallDataset(self.train_datasets)
 
         data_loader = DataLoader(
@@ -206,7 +206,7 @@ class FedNLLDataset(FedDataset):
     
     #         )
 
-    def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, sample_prob: Dict=None, drop_last=True):
+    def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4, selected_guid: np.ndarray=None, sample_prob: Dict=None, drop_last=True):
         if train:
             shuffle = True
         else:
@@ -231,7 +231,7 @@ class FedNLLDataset(FedDataset):
         )
         return data_loader
     
-    def get_semiws_dataloader(self, cid=None, train=True, batch_size=64, num_workers=2, selected_guid: np.ndarray=None, prob_dict: Dict=None):
+    def get_semiws_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4, selected_guid: np.ndarray=None, prob_dict: Dict=None):
         if train:
             shuffle = True
         else:
