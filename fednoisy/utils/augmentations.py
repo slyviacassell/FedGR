@@ -11,7 +11,7 @@ import warnings
 import PIL, PIL.ImageOps, PIL.ImageEnhance, PIL.ImageDraw
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torchvision.transforms.functional as F
 from PIL import Image
 
 try:

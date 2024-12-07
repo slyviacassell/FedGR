@@ -666,7 +666,7 @@ class CELoss(nn.Module):
     """
     Wrapper for ce loss
     """
-    def forward(self, logits, targets, reduction='none'):
+    def forward(self, logits, targets, reduction='mean'):
         return ce_loss(logits, targets, reduction)
     
 

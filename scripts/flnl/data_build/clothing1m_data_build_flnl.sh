@@ -9,7 +9,7 @@ python build_dataset_fed.py --dataset clothing1m \
     --raw_data_dir ../rawdata/clothing1M/ \
     --data_dir ../flnldata/clothing1m \
     --seed $SEED \
-    --num_samples 265664
+    --num_samples 1000000
 
 python build_dataset_fed.py --dataset clothing1m \
     --partition noniid-labeldir \
@@ -20,4 +20,4 @@ python build_dataset_fed.py --dataset clothing1m \
     --raw_data_dir ../rawdata/clothing1M/ \
     --data_dir ../flnldata/clothing1m \
     --seed $SEED \
-    --num_samples 265664
+    --num_samples 1000000

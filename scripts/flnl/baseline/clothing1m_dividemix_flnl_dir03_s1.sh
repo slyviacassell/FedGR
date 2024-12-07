@@ -46,7 +46,7 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/mai
 --wandb_group clothing1m-c${N_CLIENTS}-sr${SR}-dir03-real-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r50-s$SEED \
 --wandb_tags ${DATASET} clients-${N_CLIENTS} real lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed$SEED \
 --wandb_job_type $WD_J_TYPE \
---num_samples 265664 \
+--num_samples 1000000 \
 --dividemix \
 --dividemix_warmup_round 100 \
 --dividemix_lambda_u 25

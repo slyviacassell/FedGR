@@ -35,8 +35,17 @@ class GlobalOrchestra(SyncServerHook):
 
         self.centroids = nn.Linear(self.feat_dim, self.g_n_centroids, bias=False)
 
+        self.queue_size = 2048
+        handler.queue = torch.randn(self.feat_dim, self.queue_size)
+        handler.queue_ptr = torch.zeros(1, dtype=torch.long)
+
     def on_global_update_start(self, handler, *args, **kwargs):
         local_centroids = torch.cat(handler.local_centroids, dim=0) # [N_centroids * num_clients, D]
+        
+        self.dequeue_and_enqueue(handler, local_centroids)
+        local_centroids = handler.queue.T
+        assert local_centroids.requires_grad == False
+        
         self.clustering(local_centroids)
     
     def get_centroids(self, handler, *args, **kwargs):
@@ -71,6 +80,18 @@ class GlobalOrchestra(SyncServerHook):
                 train_loss += loss.item()
             if (round_idx + 1) % 100 == 0:
                 print(f"Round {round_idx + 1}/{total_rounds} Loss: {train_loss / (round_idx + 1):.4f}")
+        self.centroids.eval()
+
+    def dequeue_and_enqueue(self, handler, keys: torch.Tensor):
+        bsz = keys.shape[0]
+        ptr = handler.queue_ptr
+        if ptr + bsz > self.queue_size:
+            handler.queue[:, ptr:] = keys[:self.queue_size - ptr].T
+            handler.queue[:, :bsz - (self.queue_size - ptr)] = keys[self.queue_size - ptr:].T
+        else:
+            handler.queue[:, ptr:ptr + bsz] = keys.T
+        ptr = (ptr + bsz) % self.queue_size
+        handler.queue_ptr = ptr
 
 
 class LocalOrchestra(SerialClientTrainerHook):
@@ -94,6 +115,7 @@ class LocalOrchestra(SerialClientTrainerHook):
         # debug
         client_trainer.queue_labels = {cid: torch.zeros(self.queue_size, dtype=torch.long) for cid in range(client_trainer.num_clients)}
         client_trainer.queue_guids = {cid: torch.zeros(self.queue_size, dtype=torch.long) for cid in range(client_trainer.num_clients)}
+        client_trainer.queue_clean_mask = {cid: torch.ones(self.queue_size, dtype=torch.bool) for cid in range(client_trainer.num_clients)}
 
         client_trainer.local_centroids = []
 
@@ -105,9 +127,14 @@ class LocalOrchestra(SerialClientTrainerHook):
     def get_assignment(self, client_trainer, outputs_w: torch.Tensor, outputs_s: torch.Tensor, *args, **kwargs):
         keys = TF.normalize(outputs_w["orchestra_head"], dim=1)
         
-        self.dequeue_and_enqueue(client_trainer, keys.cpu(), kwargs.get("labels", None), kwargs.get("guids", None))
+        self.dequeue_and_enqueue(client_trainer, keys.cpu(), kwargs.get("labels", None), kwargs.get("guids", None), kwargs.get("clean_mask", None))
         
         q = TF.softmax(client_trainer.global_centroids(keys) / self.orchestra_temperature, dim=1)
+
+        # swav like
+        # bs = keys.shape[0]
+        # cost = client_trainer.global_centroids(torch.cat([TF.normalize(client_trainer.queues[client_trainer.l_cid].T,dim=1).to(client_trainer.device),keys],dim=0))
+        # q = sknopp(cost)[-bs:]
 
         return q
 
@@ -137,7 +164,7 @@ class LocalOrchestra(SerialClientTrainerHook):
         return centroids # [N_centroids, D]
 
     @torch.no_grad()
-    def dequeue_and_enqueue(self, client_trainer, keys: torch.Tensor, labels: torch.Tensor=None, guids: torch.Tensor=None):
+    def dequeue_and_enqueue(self, client_trainer, keys: torch.Tensor, labels: torch.Tensor=None, guids: torch.Tensor=None, clean_mask: torch.Tensor=None):
         bsz = keys.shape[0]
         ptr = client_trainer.queue_ptr[client_trainer.l_cid]
         if ptr + bsz > self.queue_size:
@@ -150,6 +177,9 @@ class LocalOrchestra(SerialClientTrainerHook):
             if guids is not None:
                 client_trainer.queue_guids[client_trainer.l_cid][ptr:] = guids[:self.queue_size - ptr]
                 client_trainer.queue_guids[client_trainer.l_cid][:bsz - (self.queue_size - ptr)] = guids[self.queue_size - ptr:]
+            if clean_mask is not None:
+                client_trainer.queue_clean_mask[client_trainer.l_cid][ptr:] = clean_mask[:self.queue_size - ptr]
+                client_trainer.queue_clean_mask[client_trainer.l_cid][:bsz - (self.queue_size - ptr)] = clean_mask[self.queue_size - ptr:]
         else:
             client_trainer.queues[client_trainer.l_cid][:, ptr:ptr + bsz] = keys.T
 
@@ -157,12 +187,14 @@ class LocalOrchestra(SerialClientTrainerHook):
                 client_trainer.queue_labels[client_trainer.l_cid][ptr:ptr + bsz] = labels
             if guids is not None:
                 client_trainer.queue_guids[client_trainer.l_cid][ptr:ptr + bsz] = guids
+            if clean_mask is not None:
+                client_trainer.queue_clean_mask[client_trainer.l_cid][ptr:ptr + bsz] = clean_mask
         ptr = (ptr + bsz) % self.queue_size
         client_trainer.queue_ptr[client_trainer.l_cid] = ptr
 
 
 # Sinkhorn Knopp 
-def sknopp(cZ, lamd=25, max_iters=100):
+def sknopp(cZ: torch.Tensor, lamd=25, max_iters=100):
     with torch.no_grad():
         N_samples, N_centroids = cZ.shape # cZ is [N_samples, N_centroids]
         probs = TF.softmax(cZ * lamd, dim=1).T # probs should be [N_centroids, N_samples]

@@ -30,10 +30,6 @@ from fednoisy.algorithms.flnl.standalone.fedap import (
     FedAPClientTrainer,
     FedAPServerHandler,
 )
-from fednoisy.algorithms.flnl.standalone.fedap_cs import (
-    FedAPCSClientTrainer,
-    FedAPCSServerHandler,
-)
 from fednoisy.algorithms.flnl.standalone.fedap_orchestra import (
     FedAPOrchestraClientTrainer,
     FedAPOrchestraServerHandler,
@@ -113,11 +109,7 @@ else:
     wandb_logger = None
 
 # ==== choose server handler and client trainer ====
-if args.use_cs:
-    handler = FedAPCSServerHandler(
-        model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
-    ) # server
-elif args.use_orchestra:
+if args.use_orchestra:
     handler = FedAPOrchestraServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
     ) # server
@@ -131,11 +123,7 @@ else:
     ) # server
 
 # ---- FedAvg & FedAvg-RobustLoss ----
-if args.use_cs:
-    trainer = FedAPCSClientTrainer(
-        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
-    ) # client
-elif args.use_orchestra:
+if args.use_orchestra:
     trainer = FedAPOrchestraClientTrainer(
         model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     ) # client
@@ -166,6 +154,9 @@ if args.restore:
 
     # clear the cache
     handler.round += 1
+    handler.global_round = args.com_round
+    handler.num_clients = args.num_clients
+    handler.sample_ratio = args.sample_ratio
     handler.client_buffer_cache = []
 
 # ==== server dataset ====
@@ -188,6 +179,8 @@ pipeline = FedAPStandalone(handler, trainer, args=args, save_best=args.save_best
 if args.restore:
     print("Verify ckpt")
     handler.call_hook("eval_fn", "TestHook")
+    if args.anchor_model == "global_ema":
+        trainer.call_hook("eval_fn", "ema_test")
 
 pipeline.main()
 

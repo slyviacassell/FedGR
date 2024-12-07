@@ -28,13 +28,27 @@ class SupOrchestraLoss(SerialClientTrainerHook):
     def __init__(self) -> None:
         super().__init__()
 
+    def on_init(self, client_trainer, *args, **kwargs):
+        self.orchestra_temperature = client_trainer.args.orchestra_temperature
+
     def loss(self, client_trainer, outputs_s, targets, *args, **kwargs):
-        sup_loss = TF.cross_entropy(outputs_s["linear_head"], targets["linear_head"])
+        sup_loss = TF.cross_entropy(outputs_s["linear_head"]["cls_head"], targets["linear_head"])
         
         orchestra_loss = -torch.sum(targets["orchestra_head"] * torch.log_softmax(outputs_s["orchestra_head"]+1e-10, dim=1), dim=1).mean()
 
+        # swav like
+        # orchestra_loss = -torch.sum(targets["orchestra_head"] * torch.log_softmax((outputs_s["orchestra_head"]+1e-10)/self.orchestra_temperature, dim=1), dim=1).mean()
+
         loss = sup_loss + orchestra_loss
         return loss
+    
+    def ssl2sl_rep_reg(self, outputs_s):
+        sl_normlized = TF.normalize(outputs_s["linear_head"]["cls_embedding"], p=2, dim=1)
+        ssl_normlized = TF.normalize(outputs_s["orchestra_head"], p=2, dim=1)
+        sl_gram = torch.mm(sl_normlized, sl_normlized.t())
+        ssl_gram = torch.mm(ssl_normlized, ssl_normlized.t())
+        regulizer = torch.sum((sl_gram - ssl_gram) ** 2,dim=1).mean()
+        return regulizer
     
 
 class SemiOrchestraLoss(SupOrchestraLoss):
@@ -43,12 +57,14 @@ class SemiOrchestraLoss(SupOrchestraLoss):
         self.p_meter = AverageMeter()
 
     def on_init(self, client_trainer, *args, **kwargs):
+        super().on_init(client_trainer, *args, **kwargs)
         client_trainer.max_confis_ema = {cid: torch.ones(1, device=client_trainer.device)/CLASS_NUM[client_trainer.args.dataset] for cid in range(client_trainer.num_clients)}
         client_trainer.confis_ema = {cid: (torch.ones(CLASS_NUM[client_trainer.args.dataset], device=client_trainer.device)/CLASS_NUM[client_trainer.args.dataset]) for cid in range(client_trainer.num_clients)}
         self.confi_beta = 0.999
 
-        self.pseudo_labels = {}
+        self.relabels = {}
         self.sample_probs = {}
+        self.estimated_noise_ratio = {}
 
     def on_client_training_end(self, client_trainer, *args, **kwargs):
         client_trainer._LOGGER.info(
@@ -69,27 +85,34 @@ class SemiOrchestraLoss(SupOrchestraLoss):
             for cid in client_trainer.id_list:
                 dataset = client_trainer.dataset.get_dataset(cid=cid, train=True)
                 data_loader = client_trainer.dataset.get_semiws_dataloader(cid=cid, train=True, batch_size=128)
-                guids, pseudo_labels = self.pseudo_labeling(client_trainer, data_loader, cid)
+                guids, pseudo_labels, noisy_mask = self.relabeling(client_trainer, data_loader, cid)
                 # for i,g in enumerate(dataset.guids):
                 #     dataset.noisy_labels[i] = pseudo_labels[guids.index(g)]
                 # client_trainer._LOGGER.info(f"Round {client_trainer.round} client-{cid} pseudo acc: {accuracy_score(dataset.labels, dataset.noisy_labels)*100:.2f}%")
                 
-                self.pseudo_labels.update({g: l for g, l in zip(guids, pseudo_labels)})
+                self.relabels.update({g: l for g, l in zip(guids, pseudo_labels)})
+                self.estimated_noise_ratio.update({cid: np.sum(noisy_mask)/len(noisy_mask)})
             self.sample_probs.update({g: c for g,c in zip(client_trainer.overall_guids.tolist(), client_trainer.overall_probs.tolist())})
 
     @torch.no_grad()
-    def pseudo_labeling(self, client_trainer, dataloader, cid, *args, **kwargs):
+    def relabeling(self, client_trainer, dataloader, cid, *args, **kwargs):
+        tmp_meter = AverageMeter()
+
         client_trainer.model.eval()
         guids_list = []
-        targets_list = []
+        p_targets_list = []
+        noisy_mask_list = []
         for batch in dataloader:
-            imgs, guids, targets = batch["img_w"], batch["guid"], batch["noisy_label"]
+            imgs, guids, noisy_targets, targets = batch["img_w"], batch["guid"], batch["noisy_label"], batch["label"]
+
             if client_trainer.cuda:
                 imgs = imgs.to(client_trainer.device)
+                noisy_targets = noisy_targets.to(client_trainer.device)
                 targets = targets.to(client_trainer.device)
 
             outputs = client_trainer.model(imgs, return_dict=True, full_heads=True)
-            probs, preds = torch.max(torch.softmax(outputs["linear_head"], dim=1), dim=1)
+            confis = torch.softmax(outputs["linear_head"]["cls_head"], dim=1)
+            probs, preds = torch.max(confis, dim=1)
 
             max_confi_ema = client_trainer.max_confis_ema[cid]
             confi_ema = client_trainer.confis_ema[cid]
@@ -100,19 +123,24 @@ class SemiOrchestraLoss(SupOrchestraLoss):
             noisy_mask = torch.tensor([True if g in client_trainer.overall_noisy_guids else False for g in guids.numpy()]).to(client_trainer.device)
             mask = mask & noisy_mask
 
-            targets[mask] = preds[mask]
+            noisy_targets[mask] = preds[mask]
+
 
             guids_list += guids.tolist()
-            targets_list += targets.cpu().tolist()
-        return guids_list, targets_list
+            p_targets_list += noisy_targets.cpu().tolist()
+            noisy_mask_list.append(mask.cpu().numpy())
+        noisy_mask_list = np.concatenate(noisy_mask_list)
+        client_trainer._LOGGER.info(f"Round {client_trainer.round} client-{cid} pseudo acc: {tmp_meter.avg*100:.2f}%")
+        return guids_list, p_targets_list, noisy_mask_list
 
     def loss(self, client_trainer, outputs_w, outputs_s, targets, *args, **kwargs):
         with torch.no_grad():
-            confis = torch.softmax(outputs_w["linear_head"], dim=1)
+            confis = torch.softmax(outputs_w["linear_head"]["cls_head"], dim=1)
             self.confidence_ema(client_trainer, confis)
 
         if client_trainer.round < client_trainer.args.warmup_round:
-            return super().loss(client_trainer, outputs_s, targets, *args, **kwargs)
+            loss = super().loss(client_trainer, outputs_s, targets, *args, **kwargs)
+            return loss
         else:
             labels = kwargs["labels"]
             guids = kwargs["guids"].numpy().tolist()
@@ -121,19 +149,22 @@ class SemiOrchestraLoss(SupOrchestraLoss):
 
             self.p_meter.update(torch.mean((labels == sup_targets.cpu()).float()).item(), len(labels))
 
-            # sup_loss = TF.cross_entropy(outputs_s["linear_head"], sup_targets)
+            # sup_loss = TF.cross_entropy(outputs_s["linear_head"]["cls_head"], sup_targets)
 
 
             noisy_targets = TF.one_hot(sup_targets, num_classes=CLASS_NUM[client_trainer.args.dataset]).float()
             probs = torch.tensor([self.sample_probs.get(g, 1) for g in guids], device=client_trainer.device, dtype=torch.float32).unsqueeze(1)
-            pseudo_targets = [self.pseudo_labels.get(g, sup_targets[i]) for i,g in enumerate(guids)]
+            pseudo_targets = [self.relabels.get(g, sup_targets[i]) for i,g in enumerate(guids)]
             pseudo_targets = TF.one_hot(torch.tensor(pseudo_targets).to(client_trainer.device), num_classes=CLASS_NUM[client_trainer.args.dataset]).float()
-            sup_targets = probs * noisy_targets + (1. - probs) * pseudo_targets
-            
-            sup_loss = -torch.sum(sup_targets * torch.log_softmax(outputs_s["linear_head"]+1e-10, dim=1), dim=1).mean()
+            mixed_targets = probs * noisy_targets + (1. - probs) * pseudo_targets
+            sup_loss = -torch.sum(mixed_targets * torch.log_softmax(outputs_s["linear_head"]["cls_head"]+1e-10, dim=1), dim=1).mean()
 
 
             orchestra_loss = -torch.sum(targets["orchestra_head"] * torch.log_softmax(outputs_s["orchestra_head"]+1e-10, dim=1), dim=1).mean()
+            
+            # swav like
+            # orchestra_loss = -torch.sum(targets["orchestra_head"] * torch.log_softmax((outputs_s["orchestra_head"]+1e-10)/self.orchestra_temperature, dim=1), dim=1).mean()
+            
             loss = sup_loss + orchestra_loss
             return loss
         

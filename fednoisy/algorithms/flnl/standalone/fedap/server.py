@@ -84,6 +84,7 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
             "hooks_dict",
             "device",
             "nll_name",
+            "global_round",
         ]
 
     def __getstate__(self):
@@ -119,7 +120,8 @@ class FedAPServerHandler(SyncServerHandler, SynServerAlogrithmBase):
         self.model.to(self.device)
         for hook_name, hook in self.hooks_dict.items():
             if isinstance(hook, SyncServerEMAHook):
-                self.global_ema_model.ema_model.to(self.device)
+                pass
+                # self.global_ema_model.ema_model.to(self.device)
     
     def state_dict(self):
         return self.__dict__

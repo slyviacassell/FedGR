@@ -17,6 +17,10 @@ def build_model(model_name, ssl_method: str, num_classes: int=10, rep_dim: int=5
         encoder = ResNet18()
     elif model_name == "ResNet34":
         encoder = ResNet34()
+    elif model_name == "ResNet50":
+        encoder = torchvision.models.resnet50(pretrained=True)
+        encoder.fc = nn.Linear(2048, 2048)
+        encoder.out_features = 2048
     else:
         raise ValueError(
             f"Unrecognized model: {model_name}. Currently only support 'ResNet18'."

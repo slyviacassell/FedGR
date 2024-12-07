@@ -49,7 +49,8 @@ class FedNLLClientCheckPointHook(ClientCheckPointHook):
         for hook_name, hook in client_trainer.hooks_dict.items():
             if isinstance(hook, SerialClientLocalEMAHook):
                 for m in client_trainer.local_ema_models:
-                    m.ema_model.to(client_trainer.device)
+                    pass
+                    # m.ema_model.to(client_trainer.device)
             elif isinstance(hook, LocalOrchestra):
                 client_trainer.global_centroids.to(client_trainer.device)
 
@@ -73,7 +74,8 @@ class FedNLLServerCheckPointHook(ServerCheckPointHook):
 
         for hook_name, hook in handler.hooks_dict.items():
             if isinstance(hook, SyncServerEMAHook):
-                handler.global_ema_model.ema_model.to(handler.device)
+                pass
+                # handler.global_ema_model.ema_model.to(handler.device)
 
         handler.model.to(handler.device)
     

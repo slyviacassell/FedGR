@@ -1,4 +1,12 @@
 #!/bin/bash
+
+MakeDir(){
+    if ! [ -e "$1" ]
+    then
+        mkdir "$1"
+    fi
+}
+
 cd /yuxintian-20phd/projects/fednoisy/FedNoisy
 
 SEED=1
@@ -19,6 +27,9 @@ EXP_NAME='fedavg-cot'
 WD_P_NAME=FLNL
 WD_J_TYPE='baseline'
 WD_MODE='offline'
+
+LOG_DIR=${OUT_DIR}/logs/
+MakeDir "${LOG_DIR}"
 
 # # cf100-c${N_CLIENTS}-sr${SR}-iid-clean-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 # WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
@@ -74,7 +85,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/mai
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n06ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
 --coteaching \
---coteaching_forget_rate 0.45
+--coteaching_forget_rate 0.45 \
+>> "${LOG_DIR}/cf100-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED.log" 2>&1 &
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
@@ -103,7 +115,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/mai
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n10ls510 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
 --coteaching \
---coteaching_forget_rate 0.75
+--coteaching_forget_rate 0.75 \
+>> "${LOG_DIR}/cf100-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED.log" 2>&1 &
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
@@ -133,7 +146,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/mai
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n06las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
 --coteaching \
---coteaching_forget_rate 0.18
+--coteaching_forget_rate 0.18 \
+>> "${LOG_DIR}/cf100-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED.log" 2>&1 &
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
@@ -162,7 +176,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/mai
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n10las24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
 --coteaching \
---coteaching_forget_rate 0.3
+--coteaching_forget_rate 0.3 \
+>> "${LOG_DIR}/cf100-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED.log" 2>&1 &
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
@@ -192,7 +207,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/mai
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n06lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
 --coteaching \
---coteaching_forget_rate 0.18
+--coteaching_forget_rate 0.18 \
+>> "${LOG_DIR}/cf100-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED.log" 2>&1 &
 
 # cf100-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/main.py \
@@ -221,4 +237,9 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/fedavg/mai
 --wandb_tags ${DATASET} clients-${N_CLIENTS} n10lm24 lr-${LR} wd${WEIGHT_DECAY} momentum${MOMENTUM} l${EPOCHS}r${COM_ROUND} bs${BSZ} sgd ${PARTITION} ${MODEL} sr${SR} seed${SEED} \
 --wandb_job_type $WD_J_TYPE \
 --coteaching \
---coteaching_forget_rate 0.3
+--coteaching_forget_rate 0.3 \
+>> "${LOG_DIR}/cf100-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r34-s$SEED.log" 2>&1 &
+
+wait
+echo "All runs are done!"
+exit 0

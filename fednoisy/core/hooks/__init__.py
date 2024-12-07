@@ -11,7 +11,6 @@ from .priority import (
 from .ema import (
     SerialClientLocalEMAHook, 
     SyncServerEMAHook, 
-    SerialClientGlobalEMAHook,
 )
 from .eval import (
     TestHook, 

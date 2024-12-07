@@ -69,6 +69,7 @@ class FedAPOrchestraServerHandler(FedAPServerHandler):
         super(FedAPOrchestraServerHandler, self).__init__(
             model, global_round, sample_ratio, nll_name, cuda, device, logger, wandb_logger, args
         )
+        self.sys_sniffing_per_client_cnt = 0
 
     def set_hooks(self):
         self.register_hooks(SampleMetricEvalServerHook(), None, "LOWEST")
@@ -135,23 +136,26 @@ class FedAPOrchestraServerHandler(FedAPServerHandler):
         return down_pack
     
     # def sample_clients(self):        
-    #     if self.num_clients_per_round < self.num_clients:
+    #     if self.num_clients_per_round < self.num_clients and self.sys_sniffing_per_client_cnt < self.args.n_sys_sniffing_per_client:
     #         # random sample the clients without replacements
     #         if self.round == 0:
-    #             self.cnt = 0
+    #             self.ptr = 0
     #             self.selected_set = list(range(self.num_clients))
     #             random.shuffle(self.selected_set)
 
-    #         selection = self.selected_set[self.cnt*self.num_clients_per_round:(1+self.cnt)*self.num_clients_per_round]
+    #         selection = self.selected_set[self.ptr*self.num_clients_per_round:(1+self.ptr)*self.num_clients_per_round]
                 
-    #         if len(self.selected_set) <= (1+self.cnt)*self.num_clients_per_round:
+    #         if len(self.selected_set) <= (1+self.ptr)*self.num_clients_per_round:
     #             self.selected_set = list(range(self.num_clients))
     #             random.shuffle(self.selected_set)
-    #             self.cnt = 0
-    #             self._LOGGER.info(f"Round [{self.round - 1}/{self.global_round}] server init client set for next")
+    #             self.ptr = 0
+    #             self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server init client set for next")
+
+    #             self.sys_sniffing_per_client_cnt += 1
     #         else:
-    #             self.cnt += 1
+    #             self.ptr += 1
     #     else:
+    #         # random selection
     #         selection = random.sample(range(self.num_clients), self.num_clients_per_round)
         
     #     return sorted(selection)

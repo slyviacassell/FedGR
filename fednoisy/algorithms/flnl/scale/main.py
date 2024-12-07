@@ -35,10 +35,6 @@ from fednoisy.algorithms.flnl.scale import (
     FedAPPassiveClientManager, 
     FedAPSynchronousServerManager,
 )
-from fednoisy.algorithms.flnl.scale.fedap_cs import (
-    FedAPCSClientTrainer,
-    FedAPCSServerHandler,
-)
 from fednoisy.algorithms.flnl.scale.fedap import (
     FedAPClientTrainer,
     FedAPServerHandler,

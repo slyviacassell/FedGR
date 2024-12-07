@@ -53,4 +53,4 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
 --fedprox_mu $FPROX_MU \
---num_samples 265664
+--num_samples 1000000

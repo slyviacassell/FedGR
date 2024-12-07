@@ -45,6 +45,7 @@ def read_fednll_args():
     )
     parser.add_argument("--sample_ratio", type=float, default=0.3)
     parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--weight_decay", type=float, default=1e-3)
@@ -54,7 +55,7 @@ def read_fednll_args():
     parser.add_argument("--lr_scheduler",type=str,default="none")
     parser.add_argument("--step_size",type=int, default=20)
     parser.add_argument("--step_gamma",type=float, default=0.1)
-    parser.add_argument("--multistep_milestone",nargs="+",help="step milestone for multistep lr scheduler")
+    parser.add_argument("--multistep_milestone",nargs="+", type=int, help="step milestone for multistep lr scheduler")
     
     # ----Wandb args----
     parser.add_argument("--use_wandb",action="store_true")
@@ -75,16 +76,9 @@ def read_fednll_args():
     )
 
     # ----FedRobust args----
-    parser.add_argument(
-        "--use_cs", action="store_true", help="Whether to use CS model."
-    )
-    
+
     parser.add_argument(
         "--loss", choices=['mask_out_loss', "naive_pseudo_label_loss", "truncation_loss"], help="Which loss to use for cs."
-    )
-    
-    parser.add_argument(
-        "--local_ema", action="store_true", help="Whether use local ema model for metric evalutaion."
     )
     
 
@@ -130,7 +124,13 @@ def read_fednll_args():
         "--cs_metric", type=str, help="Which metric is used for Centralized Sieving.", choices=["loss", "loss_mean", "loss_soft_mean", "sc", "scl", "loss_ema"], default="loss"
     )
     parser.add_argument(
-        "--metric_model", type=str, choices=["global", "local"], default="local", help="Which model to use for metric evluation."
+        "--metric_model", type=str, choices=["global", "local", "local_ema"], default="local", help="Which model to use for metric evluation."
+    )
+    parser.add_argument(
+        "--local_ema", action="store_true", help="Whether use local ema model for metric evalutaion."
+    )
+    parser.add_argument(
+        "--local_ema_reinit", action="store_true", help="Whether re-init local ema model for high noise."
     )
     parser.add_argument(
         "--local_ema_plus_global", action="store_true", help="Whether use global model to average local ema model."
@@ -141,6 +141,48 @@ def read_fednll_args():
     parser.add_argument(
         "--local_ema_beta", type=float, help="The beta for local ema model.", default=0.99
     )
+    parser.add_argument(
+        "--global_ema", action="store_true", help="Whether use global ema model."
+    )
+    parser.add_argument(
+        "--global_ema_beta", type=float, help="The beta for global ema model.", default=0.99
+    )
+
+    parser.add_argument(
+        "--fixmatch_threshold", type=float, help="The threshold of fixmatch", default=0.9
+    )
+    parser.add_argument(
+        "--pse_size_threshold", type=float, help="The threshold of pse size", default=0.5
+    )
+
+    parser.add_argument(
+        "--freeze_sniffing", action="store_true", help="Whether freeze label-noise sniffing."
+    )
+    parser.add_argument(
+        "--gmm_selection", choices=['intra','inter'], type=str, default='inter', help="Whether freeze label-noise sniffing."
+    )
+    parser.add_argument(
+        "--use_strong_aug", action="store_true", help="Whether strong aug for dataset."
+    )
+    parser.add_argument(
+        "--anchor_model", choices=['global_ema','global'], type=str, default='global', help="Which model is used for kl."
+    )
+    parser.add_argument(
+        "--pse_method", choices=['freematch','fixmatch'], type=str, default='freematch', help="Which method is used for pseudo labeling."
+    )
+    parser.add_argument(
+        "--upper_rate_threshold", type=float, default=0.8, help="The threshold for low noise rate."
+    )
+    parser.add_argument(
+        "--soft_linear_up_round", type=int, default=0
+    )
+    parser.add_argument(
+        "--soft_silent_round", type=int, default=100
+    )
+    parser.add_argument(
+        "--no_label_refine", action="store_true", help="Whether to refine label."
+    )
+    
 
     # ----Restore options----
     parser.add_argument(
@@ -153,7 +195,7 @@ def read_fednll_args():
         "--ckpt_dir", default=None, type=str, help="Path for ckpt dir."
     )
     parser.add_argument(
-        "--ckpt_interval", default=150, type=int, help="Round interval for ckpt."
+        "--ckpt_interval", default=50, type=int, help="Round interval for ckpt."
     )
 
     # ----SSL options----
@@ -170,7 +212,7 @@ def read_fednll_args():
         "--ssl2sl_reg_weight", type=float, help="The weight for ssl2sl regulizer.", default=1.0
     )
     parser.add_argument(
-        "--confi_gamma", type=float, help="The ema weight for max-confidence & confidence.", default=0.999
+        "--confi_gamma", type=float, help="The ema weight for max-confidence & confidence.", default=0.99
     )
 
     # ----DivideMix options----
@@ -199,55 +241,10 @@ def read_fednll_args():
     
     # todo
     parser.add_argument(
-        "--metric_ema_gamma", type=float, default=0.7, help="The gamma for sample ema metric."
-    )
-    parser.add_argument(
-        "--global_ema", action="store_true", help="Whether use global ema model."
-    )
-    parser.add_argument(
-        "--global_ema_beta", type=float, help="The beta for global ema model.", default=0.99
-    )
-    
-    
-    parser.add_argument(
         "--grad_clip", action="store_true", help="Whether use grad clip for local update."
     )
     parser.add_argument(
         "--clip_grad_norm", type=float, help="Grad Norm for grad clipping.", default=10.0
-    )
-    
-    # ----KL Distillation options----
-    parser.add_argument(
-        "--use_kl_distill", action="store_true",
-    )
-    parser.add_argument(
-        "--kl_distill_temperature", type=float, default=0.5, help="The temperature for KL distillation."
-    )
-    parser.add_argument(
-        "--kl_teacher_model", type=str, help="Which model is used for KL distillation.", choices=["local_ema", "global_ema", "global",], default="global"
-    )
-    parser.add_argument(
-        "--lambda_kl", type=float, default=1.0, help="The weight for KL distillation loss."
-    )
-
-    # ----ELR options----
-    parser.add_argument(
-        "--use_elr", action="store_true",
-    )
-    parser.add_argument(
-        "--elr_teacher_model", type=str, help="Which model is used for ELR penalty loss.", choices=["local_ema", "global_ema", "global",], default="global"
-    )
-    parser.add_argument(
-        "--lambda_elr", type=float, default=1.0, help="The weight for ELR penalty loss."
-    )
-
-
-    # ----Other options----
-    parser.add_argument(
-        "--cecr_beta", type=float, default=2.0, help="The hyper parameter for CECR Loss"
-    )
-    parser.add_argument(
-        "--cache_data_loader", action="store_true", help="Whether to cache the data loader."
     )
     
 

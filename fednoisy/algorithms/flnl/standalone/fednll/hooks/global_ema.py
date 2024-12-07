@@ -29,7 +29,7 @@ from fednoisy.data import (
 from fednoisy.utils.ema import EMA
 
 
-class SharedAnchorHook(SerialClientTrainerHook):
+class GlobalEMAHook(SerialClientTrainerHook):
     def __init__(self) -> None:
         super().__init__()
 

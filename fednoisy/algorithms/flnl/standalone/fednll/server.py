@@ -72,6 +72,22 @@ class FedAPNLLServerHandler(FedAPServerHandler):
             model, global_round, sample_ratio, nll_name, cuda, device, logger, wandb_logger, args
         )
 
+    def __getstate__(self):
+        # 只序列化除 `_blacklist` 中的字段以外的所有字段
+        ckpt_hooks = {}
+        for hook_name, hook in self.hooks_dict.items():
+            if isinstance(hook, SyncServerEMAHook):
+                self.global_ema_model.ema_model.to("cpu")
+                ckpt_hooks[hook_name] = hook
+            elif isinstance(hook, SampleMetricEvalServerHook):
+                ckpt_hooks[hook_name] = hook
+        self._LOGGER.info(f"Server checkpoint hooks: {ckpt_hooks.keys()}")
+
+        self.model.to("cpu")
+        state = {k: v for k, v in self.__dict__.items() if k not in self._blacklist}
+        state["ckpt_hooks"] = ckpt_hooks
+        return state
+
     def register_orchestra_hooks(self):
         self.register_hooks(GlobalOrchestra(), "global_orchestra", "LOWEST")
     
@@ -178,7 +194,6 @@ class FedAPNLLServerHandler(FedAPServerHandler):
                 selection = self.permutation_set[self.permutaion_ptr*self.num_clients_per_round:(1+self.permutaion_ptr)*self.num_clients_per_round]
                     
                 if len(self.permutation_set) <= (1+self.permutaion_ptr)*self.num_clients_per_round:
-                    self.permutation_set = list(range(self.num_clients))
                     random.shuffle(self.permutation_set)
                     self.permutaion_ptr = 0
                     self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server permutation init for next")
@@ -190,14 +205,9 @@ class FedAPNLLServerHandler(FedAPServerHandler):
             self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server warmup")
             
             weights = 1. - np.array(self.est_cid_noise)
-            # mask out the clients with high noise
-            # high_noise_mask = weights < 0.2
-            # weights[high_noise_mask] = 0.0
             weights = weights / weights.sum()
             selection = np.random.choice(self.num_clients, self.num_clients_per_round, replace=False, p=weights)
             selection = selection.tolist()
-
-            # selection = random.sample(range(self.num_clients), self.num_clients_per_round) # random selection
         else: # collaborative training
             self._LOGGER.info(f"Round [{self.round}/{self.global_round}] server collaborative training")
             selection = random.sample(range(self.num_clients), self.num_clients_per_round) # random selection

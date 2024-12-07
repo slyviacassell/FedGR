@@ -64,13 +64,18 @@ class SLWeightSchedulerHook(WeightSchedulerHook):
             weight = sl_weight
         elif client_trainer.round < client_trainer.args.sniffing_round + client_trainer.args.warmup_round:
             weight = sl_weight * (1. - self.est_cid_noise[client_trainer.l_cid]) * min(1., (client_trainer.round - client_trainer.args.sniffing_round) / min(client_trainer.args.warmup_round, self.decay_round))
+
+            # weight = sl_weight
         else:
-            # todo
+            # c_size = len(client_trainer.hooks_dict["sl_loss"].relabels[client_trainer.g_cid])
+            # d_size = len(client_trainer.dataset.get_dataset(client_trainer.g_cid))
+            # n_rate = self.est_cid_noise[client_trainer.g_cid]
+            # weight = sl_weight * (c_size / d_size)
+            
             weight = sl_weight
         return weight
     
 
-# todo
 class SSLWeightSchedulerHook(WeightSchedulerHook):
     def __init__(self) -> None:
         super().__init__()
@@ -83,7 +88,17 @@ class SSLWeightSchedulerHook(WeightSchedulerHook):
         if client_trainer.round < client_trainer.args.sniffing_round:
             weight = ssl_weight
         elif client_trainer.round < client_trainer.args.sniffing_round + client_trainer.args.warmup_round:
-            weight = ssl_weight * self.est_cid_noise[client_trainer.l_cid] * min(1., (client_trainer.round - client_trainer.args.sniffing_round) / min(client_trainer.args.warmup_round, self.decay_round))
+            # weight = ssl_weight * self.est_cid_noise[client_trainer.l_cid] * min(1., (client_trainer.round - client_trainer.args.sniffing_round) / min(client_trainer.args.warmup_round, self.decay_round))
+            
+            weight = ssl_weight
         else:
+            # c_size = len(client_trainer.hooks_dict["sl_loss"].relabels[client_trainer.g_cid])
+            # d_size = len(client_trainer.dataset.get_dataset(client_trainer.g_cid))
+            # n_rate = self.est_cid_noise[client_trainer.g_cid]
+            # if n_rate < 0.2:
+            #     weight = 0.
+            # else:
+            #     weight = ssl_weight * (1. - c_size / d_size)
+
             weight = ssl_weight
         return weight

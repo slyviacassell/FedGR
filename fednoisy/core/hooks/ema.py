@@ -11,31 +11,39 @@ class SerialClientLocalEMAHook(SerialClientTrainerHook):
         super(SerialClientLocalEMAHook, self).__init__()
 
     def on_init(self, client_trainer, *args, **kwargs):
+        client_trainer.model.to('cpu')
         client_trainer.local_ema_models = [
             EMA(
                 client_trainer.model,
                 beta=client_trainer.args.local_ema_beta,
-                update_after_step=0,
+                update_after_step=1,
                 update_every=1,
                 inv_gamma=1.0,
                 power=1.0
             ) for _ in range(client_trainer.num_clients)
         ]
+        client_trainer.model.to(client_trainer.device)
+        for m in client_trainer.local_ema_models:
+            m.ema_model.eval()
     
     def on_client_training_start(self, client_trainer, *args, **kwargs):
-        local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
-        # if client_trainer.args.local_ema_plus_global:
         if client_trainer.args.local_ema_plus_global and client_trainer.args.local_ema:
-            local_ema_model.update_moving_average(
-                local_ema_model.ema_model, 
-                local_ema_model.model, # global model, use after setup global model
-                decay=client_trainer.args.local_ema_plus_global_decay
-            )
+            # if client_trainer.round >= client_trainer.args.sniffing_round: 
+                local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
+                
+                local_ema_model.ema_model.to(client_trainer.device)
+                
+                local_ema_model.update_moving_average(
+                    local_ema_model.ema_model, 
+                    local_ema_model.model, # global model, use after setup global model
+                    decay=client_trainer.args.local_ema_plus_global_decay
+                )
 
     def on_client_training_end(self, client_trainer, *args, **kwargs):
-        local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
-        if client_trainer.round < 1 and client_trainer.args.local_ema: # init local ema model after first local training round
-            local_ema_model.update()
+        if client_trainer.args.local_ema:
+            # if client_trainer.round >= client_trainer.args.sniffing_round: 
+                local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
+                local_ema_model.ema_model.to('cpu')
 
     def on_training_epoch_start(self, client_trainer, *args, **kwargs):
         pass
@@ -45,8 +53,9 @@ class SerialClientLocalEMAHook(SerialClientTrainerHook):
 
     def on_training_batch_end(self, client_trainer, *args, **kwargs):
         local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
-        if client_trainer.round >= 1 and client_trainer.args.local_ema:
-            local_ema_model.update()
+        if client_trainer.args.local_ema:
+            # if client_trainer.round >= client_trainer.args.sniffing_round: 
+                local_ema_model.update()
 
     def on_training_step_start(self, client_trainer, *args, **kwargs):
         self.on_training_batch_start(client_trainer, *args, **kwargs)
@@ -75,6 +84,10 @@ class SerialClientLocalEMAHook(SerialClientTrainerHook):
         local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
         return local_ema_model(inputs, *args, **kwargs)
 
+    @torch.no_grad()
+    def copy_params_from_model_to_ema(self, client_trainer, *args, **kwargs):
+        local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
+        local_ema_model.copy_params_from_model_to_ema()
 
 class SyncServerEMAHook(SyncServerHook):
 
@@ -85,7 +98,7 @@ class SyncServerEMAHook(SyncServerHook):
         server_handler.global_ema_model = EMA(
             server_handler.model,
             beta=server_handler.args.global_ema_beta,
-            update_after_step=0,
+            update_after_step=1,
             update_every=1,
             inv_gamma=1.0,
             power=1.0
@@ -94,21 +107,3 @@ class SyncServerEMAHook(SyncServerHook):
     def on_global_update_end(self, server_handler, *args, **kwargs):
         server_handler.global_ema_model.update()
 
-
-class SerialClientGlobalEMAHook(SerialClientTrainerHook):
-    def __init__(self) -> None:
-        super().__init__()
-        
-    def on_init(self, client_trainer, *args, **kwargs):
-        client_trainer.global_ema_model = EMA(
-            client_trainer.model,
-            beta=client_trainer.args.global_ema_beta,
-            update_after_step=0,
-            update_every=1,
-            inv_gamma=1.0,
-            power=1.0
-        )
-
-    def on_local_process_start(self, client_trainer, *args, **kwargs):
-        global_ema_model_params = client_trainer.cur_payload[1]
-        client_trainer.set_global_ema_model(global_ema_model_params)

@@ -696,15 +696,17 @@ class FedNLLFedAvgDivideMixClientTrainer(FedNLLFedAvgClientTrainer):
             prob_dict1, label_guids1, unlabel_guids1 = self.update_probabilties_split_data_indices(self._model.models[0], loss_history1, eval_loader)
             prob_dict2, label_guids2, unlabel_guids2 = self.update_probabilties_split_data_indices(self._model.models[1], loss_history2, eval_loader)
 
+            n_workers = 4
+
             if len(label_guids2) == 0 or len(unlabel_guids2) == 0: # when gmm failed to find any labeled or unlabeled samples, simply warmup
                 print('gmm f@cked',len(label_guids2), len(unlabel_guids2))
                 self.warmup(model_parameters, train_loader)
             else:
                 labeled_loader1 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids2, sample_prob=prob_dict2, drop_last=False
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids2, sample_prob=prob_dict2, drop_last=False, persistent_workers=False,pin_memory=False, num_workers=n_workers
                 ) # the first epoch for data loader is very slow. hence, each epoch of dividemix would cost much more time
                 unlabeled_loader1 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids2, sample_prob=prob_dict2, drop_last=False
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids2, sample_prob=prob_dict2, drop_last=False, persistent_workers=False,pin_memory=False, num_workers=n_workers
                 )
                 self.divide_mix(self.round, self._model.models[0],self._model.models[1],self.optimizer1,labeled_loader1,unlabeled_loader1,criterion,0)
 
@@ -714,10 +716,10 @@ class FedNLLFedAvgDivideMixClientTrainer(FedNLLFedAvgClientTrainer):
             else:
 
                 labeled_loader2 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids1, sample_prob=prob_dict1, drop_last=False
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=label_guids1, sample_prob=prob_dict1, drop_last=False, persistent_workers=False,pin_memory=False, num_workers=n_workers
                 )
                 unlabeled_loader2 = self.dataset.get_dividemix_dataloader(
-                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids1, sample_prob=prob_dict1, drop_last=False
+                    cid=self.cur_cid, train=True, batch_size=self.batch_size, selected_guid=unlabel_guids1, sample_prob=prob_dict1, drop_last=False, persistent_workers=False,pin_memory=False, num_workers=n_workers
                 )
                 self.divide_mix(self.round, self._model.models[1],self._model.models[0],self.optimizer2,labeled_loader2,unlabeled_loader2,criterion,1)
 

@@ -28,6 +28,11 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         client_trainer.overall_guids = None
         client_trainer.overall_probs = None
 
+        client_trainer.local_noisy_guids = [None for _ in range(client_trainer.num_clients)]
+        client_trainer.local_clean_guids = [None for _ in range(client_trainer.num_clients)]
+        client_trainer.local_guids = [None for _ in range(client_trainer.num_clients)]
+        client_trainer.local_probs = [None for _ in range(client_trainer.num_clients)]
+
         client_trainer.cs_metrics = None
 
         self.sample_metric_container = [{} for _ in range(client_trainer.num_clients)]
@@ -37,15 +42,37 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
         self.use_local = False if client_trainer.args.partition == "iid" else True
 
     def on_local_process_start(self, client_trainer, *args, **kwargs):
-        p = 2
-        client_trainer.overall_clean_guids = client_trainer.cur_payload[p].numpy()
-        client_trainer.overall_noisy_guids = client_trainer.cur_payload[p+1].numpy()
-        client_trainer.overall_guids = client_trainer.cur_payload[p+2].numpy()
-        client_trainer.overall_probs = client_trainer.cur_payload[p+3].numpy()
+        if client_trainer.args.gmm_selection == 'intra':
+            client_trainer.overall_noisy_guids = np.concatenate([n_guids if n_guids is not None else np.zeros(1) for n_guids in client_trainer.local_noisy_guids])
+            client_trainer.overall_clean_guids = np.concatenate([c_guids if c_guids is not None else np.zeros(1) for c_guids in client_trainer.local_clean_guids])
+            client_trainer.overall_guids = np.concatenate([guids if guids is not None else np.zeros(1) for guids in client_trainer.local_guids])
+            client_trainer.overall_probs = np.concatenate([probs if probs is not None else np.zeros(1) for probs in client_trainer.local_probs])
+        elif client_trainer.args.gmm_selection == 'inter':
+            p = 2
+            client_trainer.overall_clean_guids = client_trainer.cur_payload[p].numpy()
+            client_trainer.overall_noisy_guids = client_trainer.cur_payload[p+1].numpy()
+            client_trainer.overall_guids = client_trainer.cur_payload[p+2].numpy()
+            client_trainer.overall_probs = client_trainer.cur_payload[p+3].numpy()
+
+    def on_local_process_end(self, client_trainer, *args, **kwargs):
+        if client_trainer.round == client_trainer.args.com_round - 1 and client_trainer.args.dataset != 'clothing1m':
+            for cid in range(client_trainer.num_clients):
+                dataset = client_trainer.dataset.get_dataset(cid=cid, train=True)
+                pred = np.array([0 if g in client_trainer.overall_noisy_guids else 1 for g in dataset.guids])
+                clean_mask = np.array(dataset.labels) == np.array(dataset.noisy_labels)
+                y_true = clean_mask.astype(int)
+                client_trainer._LOGGER.info(
+                    f"Sample Selection Client {cid} recall: {recall_score(y_true,pred)*100:.2f}%, "
+                    f"percision: {precision_score(y_true,pred)*100:.2f}%, "
+                    f"f1_score: {f1_score(y_true,pred)*100:.2f}%"
+                )
     
     def on_client_training_end(self, client_trainer, *args, **kwargs):
         sample_metrics = self.update_sample_metrics(client_trainer, client_trainer.args.metric_model)
         client_trainer.cs_metrics = self.cs_metric(client_trainer, sample_metrics, *args, **kwargs)
+
+        if client_trainer.args.gmm_selection == 'intra':
+            self.local_gmm(client_trainer, client_trainer.cs_metrics[0], client_trainer.cs_metrics[1], client_trainer.l_cid)
 
         self.epoch_cnt = 0
 
@@ -59,6 +86,8 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
             model = client_trainer.cur_global_model
         elif metric_model == "local":
             model = client_trainer.model
+        elif metric_model == "local_ema":
+            model = client_trainer.local_ema_models[client_trainer.l_cid]
         else:
             raise ValueError(f"Invalid metric model: {metric_model}")
 
@@ -226,6 +255,24 @@ class SampleMetricEvalClientHook(SerialClientTrainerHook):
 
         return df
     
+    def local_gmm(self, client_trainer, local_metrics, guids, cid):
+        local_metrics = local_metrics.numpy()
+        guids = guids.numpy()
+
+        gmm = GaussianMixture(n_components=2,max_iter=20,tol=1e-2,reg_covar=5e-4)
+        gmm.fit(local_metrics.reshape((-1, 1)))
+        probs = gmm.predict_proba(local_metrics.reshape((-1, 1)))
+        probs = probs[:,gmm.means_.argmin()] 
+        y_pred = (probs >= 0.5)
+        
+        noisy_guids = guids[~y_pred]
+        clean_guids = guids[y_pred]
+
+        client_trainer.local_noisy_guids[cid] = noisy_guids
+        client_trainer.local_clean_guids[cid] = clean_guids
+        client_trainer.local_probs[cid] = probs
+        client_trainer.local_guids[cid] = guids
+    
 
 class SampleMetricEvalServerHook(SyncServerHook):
     def __init__(self) -> None:
@@ -249,25 +296,26 @@ class SampleMetricEvalServerHook(SyncServerHook):
         self.window_sz = 0
 
     def on_global_update_start(self, server_handler, *args, **kwargs):
-        if server_handler.round < server_handler.args.sniffing_round + server_handler.args.warmup_round: # update the noise estimation
-            gmm_model, server_handler.clean_guids, \
-                server_handler.noisy_guids, \
-                        server_handler.overall_guids, \
-                            server_handler.overall_probs = self.central_sieving(
-                                server_handler,
-                                server_handler.recv_metrics, 
-                                server_handler.recv_guids, 
-                                server_handler.recv_clean_mask
-                            )
-            self.client_noise_sniffing(server_handler, gmm_model, server_handler.recv_cid_list, server_handler.recv_metrics)
-        else:
-            self.central_sieving(
-                server_handler,
-                server_handler.recv_metrics, 
-                server_handler.recv_guids, 
-                server_handler.recv_clean_mask
-            )
-        
+        if server_handler.args.gmm_selection == 'inter':
+            if server_handler.round < server_handler.args.sniffing_round + server_handler.args.warmup_round or not server_handler.args.freeze_sniffing: # update the noise estimation
+                gmm_model, server_handler.clean_guids, \
+                    server_handler.noisy_guids, \
+                            server_handler.overall_guids, \
+                                server_handler.overall_probs = self.central_sieving(
+                                    server_handler,
+                                    server_handler.recv_metrics, 
+                                    server_handler.recv_guids, 
+                                    server_handler.recv_clean_mask
+                                )
+                self.client_noise_sniffing(server_handler, gmm_model, server_handler.recv_cid_list, server_handler.recv_metrics)
+            else:
+                self.central_sieving(
+                    server_handler,
+                    server_handler.recv_metrics, 
+                    server_handler.recv_guids, 
+                    server_handler.recv_clean_mask
+                )
+            
     def client_noise_sniffing(self, server_handler, gmm_model: GaussianMixture, recv_cid_list, recv_metrics, *args, **kwargs):
         for cid, metrics in zip(recv_cid_list,recv_metrics):
             probs = gmm_model.predict_proba(metrics.reshape((-1, 1)))

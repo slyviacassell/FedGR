@@ -34,49 +34,70 @@ class AverageMeter(object):
 
 
 class TestHook(SerialClientTrainerHook, SyncServerHook):
-    def __init__(self, test_interval=1) -> None:
+    def __init__(self, model_attr: str=None, log_annotation: str=None, test_interval: int=1) -> None:
         SerialClientTrainerHook.__init__(self)
         SyncServerHook.__init__(self)
         self.test_interval = test_interval
+        self.log_annotation = log_annotation
+        self.model_attr = model_attr
+    
+    def on_init(self, trainer_or_handler, *args, **kwargs):
+        if self.model_attr is not None:
+            assert hasattr(trainer_or_handler, self.model_attr), f"model_attr {self.model_attr} not found in {trainer_or_handler}"
+            self.model = getattr(trainer_or_handler, self.model_attr)
+        else:
+            self.model = None
 
     def on_client_training_end(self, client_trainer, *args, **kwargs):
-        if self.every_n_round(client_trainer, self.test_interval):
+        if self.every_n_round(client_trainer, self.test_interval) and self.model is None:
             self.eval_fn(client_trainer)
     
     def on_global_update_end(self, server_handler, *args, **kwargs):
-        if self.every_n_round(server_handler, self.test_interval):
+        if self.every_n_round(server_handler, self.test_interval) and self.model is None:
             self.eval_fn(server_handler)
     
     def eval_fn(self, trainer_or_handler):
-        model = trainer_or_handler.model
-        test_dataloader = trainer_or_handler.dataset.get_dataloader(train=False, batch_size=128)
-        device = trainer_or_handler.device
-        loss_fn = nn.CrossEntropyLoss()
-        multimodel = hasattr(model, "models")
-        loss,acc = self.test(model, test_dataloader, loss_fn, device, multimodel)
-        if isinstance(trainer_or_handler, SyncServerHandler):
+        if self.model is not None:
+            model = self.model
+            test_dataloader = trainer_or_handler.dataset.get_dataloader(train=False, batch_size=128)
+            device = trainer_or_handler.device
+            loss_fn = nn.CrossEntropyLoss()
+            multimodel = hasattr(model, "models")
+            loss,acc = self.test(model, test_dataloader, loss_fn, device, multimodel)
+            log_str = self.log_annotation if self.log_annotation is not None else ""
             trainer_or_handler._LOGGER.info(
-                f"Round [{trainer_or_handler.round}/{trainer_or_handler.global_round}] server test acc: {acc*100:.2f}%, loss: {loss:.4f}"
-            )
-            if trainer_or_handler.wandb_logger is not None:
-                trainer_or_handler.wandb_logger.run.log(
-                        {
-                            "server/test-loss": loss,
-                            "server/test-acc": acc,
-                        },
-                        commit=False,
-                        # step=trainer_or_handler.round,
-                    ) 
-        elif isinstance(trainer_or_handler, SGDSerialClientTrainer):
-            trainer_or_handler._LOGGER.info(
-                    f"Round {trainer_or_handler.round} client-{trainer_or_handler.g_cid} local test acc: {acc*100:.2f}%, loss: {loss:.4f}"
+                    f"Round {trainer_or_handler.round} {log_str} test acc: {acc*100:.2f}%, loss: {loss:.4f}"
                 )
-            if trainer_or_handler.wandb_logger is not None:
-                logs = {
-                    f"client-{trainer_or_handler.g_cid}/test-acc": acc,
-                    f"client-{trainer_or_handler.g_cid}/test-loss": loss,
-                }
-                trainer_or_handler.wandb_logger.run.log(logs, commit=False)
+        else:
+            model = trainer_or_handler.model
+            test_dataloader = trainer_or_handler.dataset.get_dataloader(train=False, batch_size=128)
+            device = trainer_or_handler.device
+            loss_fn = nn.CrossEntropyLoss()
+            multimodel = hasattr(model, "models")
+            loss,acc = self.test(model, test_dataloader, loss_fn, device, multimodel)
+            if isinstance(trainer_or_handler, SyncServerHandler):
+                trainer_or_handler._LOGGER.info(
+                    f"Round [{trainer_or_handler.round}/{trainer_or_handler.global_round}] server test acc: {acc*100:.2f}%, loss: {loss:.4f}"
+                )
+                if trainer_or_handler.wandb_logger is not None:
+                    trainer_or_handler.wandb_logger.run.log(
+                            {
+                                "server/test-loss": loss,
+                                "server/test-acc": acc,
+                            },
+                            commit=False,
+                            # step=trainer_or_handler.round,
+                        ) 
+            elif isinstance(trainer_or_handler, SGDSerialClientTrainer):
+                trainer_or_handler._LOGGER.info(
+                        f"Round {trainer_or_handler.round} client-{trainer_or_handler.g_cid} local test acc: {acc*100:.2f}%, loss: {loss:.4f}"
+                    )
+                if trainer_or_handler.wandb_logger is not None:
+                    logs = {
+                        f"client-{trainer_or_handler.g_cid}/test-acc": acc,
+                        f"client-{trainer_or_handler.g_cid}/test-loss": loss,
+                    }
+                    trainer_or_handler.wandb_logger.run.log(logs, commit=False)
 
     def test(self, model, dataloader, loss_fn, device, multimodel=False, top_k=1):
         if multimodel is False:
@@ -227,7 +248,7 @@ class EvaluateTrainHook(SerialClientTrainerHook):
                 acc_.update(torch.sum(predicted.eq(labels)).item() / batch_size, batch_size)
                 entropy_.update(entropy.item(), batch_size)
 
-                _, topk_preds = torch.topk(outputs, dim=-1, k=5)
+                _, topk_preds = torch.topk(outputs, dim=-1, k=2)
                 topk_acc_.update(torch.sum(topk_preds.eq(labels.view(-1,1)).sum(dim=-1)).item() / batch_size, batch_size)
 
                 if torch.sum(is_clean) != 0:

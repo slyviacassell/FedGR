@@ -112,7 +112,7 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
 
         self.register_hooks(SerialClientLocalEMAHook(), "local_ema", "LOWEST")
 
-        self.register_hooks(ClientLabelDistriEMA(alpha=0.999), "label_distri_ema", "LOWEST")
+        # self.register_hooks(ClientLabelDistriEMA(alpha=0.999), "label_distri_ema", "LOWEST")
 
         self.register_hooks(LocalOrchestra(), "local_orchestra", "LOWEST")
         # self.register_hooks(SupOrchestraLoss(), "loss", "LOWEST")
@@ -121,7 +121,7 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
         # self.register_hooks(OrchestraEmbeddingTSNE(), "embed_vis", "LOWEST")
         # self.register_hooks(BackboneEmbeddingTSNE(), "embed_vis", "LOWEST")
 
-        # self.register_hooks(LocalSniffer(k=50), "knn", "LOWEST")
+        self.register_hooks(LocalSniffer(k=50), "local_sniffer", "LOWEST")
         # self.register_hooks(LocalKNNMonitor(k=50), "knn_monitor", "LOWEST")
 
         super(FedAPOrchestraClientTrainer, self).set_hooks()
@@ -194,6 +194,7 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
                 self.on_training_batch_start()
                 
                 imgs_w, imgs_s, labels, noisy_labels, guids = batch["img_w"], batch["img_s"], batch["label"], batch["noisy_label"], batch["guid"]
+                clean_mask = noisy_labels == labels
                 if self.cuda:
                     imgs_w = imgs_w.to(self.device)
                     imgs_s = imgs_s.to(self.device)
@@ -204,19 +205,20 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
                     imgs_w, noisy_labels = self.call_hook("mixup", "mixup", inputs=imgs_w, targets=noisy_labels)
 
                 outputs_s = self.model(imgs_s, return_dict=True, full_heads=True)
+
                 outputs_s["orchestra_head"] = self.global_centroids(TF.normalize(outputs_s["orchestra_head"], dim=1))
                 outputs_w = self.call_hook("ema_outputs", "local_ema", inputs=imgs_w, return_dict=True, full_heads=True)
                 
-                q = self.call_hook("get_assignment", "local_orchestra", outputs_w=outputs_w, outputs_s=outputs_s, guids=guids, labels=noisy_labels)
+                q = self.call_hook("get_assignment", "local_orchestra", outputs_w=outputs_w, outputs_s=outputs_s, guids=guids, labels=labels, clean_mask=clean_mask)
                 targets = {"linear_head": noisy_labels, "orchestra_head": q}
 
                 with torch.no_grad():
-                    outputs_w = self.model(imgs_w, return_dict=True, full_heads=True)
+                    outputs_w = self.model(imgs_w, return_dict=True, full_heads=True) # for label ema
 
                 loss = self.call_hook("loss", "loss", outputs_s=outputs_s, outputs_w=outputs_w, targets=targets, guids=guids, labels=labels)
 
-                if self.hooks_dict.get("label_distri_ema", None) is not None:
-                    self.call_hook("label_distri_ema", "label_distri_ema", outputs_s["linear_head"].detach())
+                # if self.hooks_dict.get("label_distri_ema", None) is not None:
+                #     self.call_hook("label_distri_ema", "label_distri_ema", outputs_s["linear_head"]["cls_head"].detach())
 
                 if self.is_prox:
                     self.call_hook("update", "fedprox_loss_meter", l_cid=self.l_cid, batch_loss=loss.item())
@@ -257,4 +259,4 @@ class FedAPOrchestraClientTrainer(FedAPClientTrainer):
         )
 
         local_result = [self.model_parameters, weight, local_loss, g_cid] + self.cs_metrics + self.local_centroids
-        return local_result
+        return local_result                

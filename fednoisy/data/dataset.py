@@ -24,7 +24,7 @@ from fedlab.utils.logger import Logger
 from fednoisy.data.NLLData import functional as nllF
 
 from fednoisy.data.NLLData.functional import NoisyDataset
-from fednoisy.data import TRAIN_TRANSFORM_STRONG, TEST_TRANSFORM
+from fednoisy.data import TRAIN_TRANSFORM_STRONG, TEST_TRANSFORM, TRAIN_TRANSFORM
 from fednoisy.data import (
     CLASS_NUM,
     TRAIN_SAMPLE_NUM,
@@ -75,6 +75,7 @@ class FedNLLDataset(FedDataset):
         self.train_p_map = {}
         self.train_cid_map = [None] * self.train_queue_size
         self.train_loaders_queue = [None] * self.train_queue_size # loader queue
+        self.args = args
         
         if self.train_preload:
             self.overall_noisy_ratio = self.get_overall_noisy_ratio() # not useful for server handler
@@ -206,7 +207,7 @@ class FedNLLDataset(FedDataset):
     
     #         )
 
-    def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4, selected_guid: np.ndarray=None, sample_prob: Dict=None, drop_last=True):
+    def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4, selected_guid: np.ndarray=None, sample_prob: Dict=None, drop_last=True, persistent_workers=True, pin_memory=True):
         if train:
             shuffle = True
         else:
@@ -225,20 +226,20 @@ class FedNLLDataset(FedDataset):
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
-            pin_memory=True, 
-            persistent_workers=True,
+            pin_memory=pin_memory, 
+            persistent_workers=persistent_workers,
             drop_last=drop_last, # for batchnorm
         )
         return data_loader
     
-    def get_semiws_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4, selected_guid: np.ndarray=None, prob_dict: Dict=None):
+    def get_semiws_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4, selected_guid: np.ndarray=None, prob_dict: Dict=None, drop_last=True):
         if train:
             shuffle = True
         else:
             shuffle = False
 
         dataset = self.get_dataset(cid, train)
-        dataset = SemiWSFedNLLDataset(self.dataset_name,dataset)
+        dataset = SemiWSFedNLLDataset(self.dataset_name, dataset, strong_aug=self.args.use_strong_aug)
         if selected_guid is not None:
             dataset.update(selected_guid, prob_dict)
 
@@ -252,7 +253,7 @@ class FedNLLDataset(FedDataset):
             num_workers=num_workers,
             pin_memory=True,
             persistent_workers=True,
-            drop_last=True, # for batchnorm
+            drop_last=drop_last, # for batchnorm
         )
         return data_loader
 
@@ -339,10 +340,14 @@ class DivideMixFedNLLDataset(Dataset):
     
 
 class SemiWSFedNLLDataset(DivideMixFedNLLDataset):
-    def __init__(self, dataset_name:str, dataset: NoisyDataset, aug_times: int = 2) -> None:
+    def __init__(self, dataset_name:str, dataset: NoisyDataset, aug_times: int = 2, strong_aug: bool=True) -> None:
         super().__init__(dataset, aug_times)
         self.weak_transform = self.dataset.transform
-        self.strong_transform = TRAIN_TRANSFORM_STRONG[dataset_name]
+        if strong_aug:
+            self.strong_transform = TRAIN_TRANSFORM_STRONG[dataset_name]
+        else:
+            # self.strong_transform = TRAIN_TRANSFORM[dataset_name]
+            self.strong_transform = self.dataset.transform
         self.pseudo_labels = None
 
     def __getitem__(self, index: Any) -> Any:

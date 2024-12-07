@@ -1,4 +1,12 @@
 #!/bin/bash
+
+MakeDir(){
+    if ! [ -e "$1" ]
+    then
+        mkdir "$1"
+    fi
+}
+
 cd /yuxintian-20phd/projects/fednoisy/FedNoisy
 
 SEED=1
@@ -22,6 +30,8 @@ WD_MODE='offline'
 FPROX_MU=1.0
 FPROX_MU_SCHE='constant'
 
+LOG_DIR=${OUT_DIR}/logs/
+MakeDir "${LOG_DIR}"
 
 # cf10-c${N_CLIENTS}-sr${SR}-iid-clean-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
@@ -50,7 +60,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --wandb_job_type $WD_J_TYPE \
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--fedprox_mu $FPROX_MU \
+>> "${LOG_DIR}/cf10-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-clean-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED}.log" 2>&1 &
 
 # cf10-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
@@ -81,7 +92,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --wandb_job_type $WD_J_TYPE \
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--fedprox_mu $FPROX_MU \
+>> "${LOG_DIR}/cf10-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n06ls510-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED}.log" 2>&1 &
 
 # cf10-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
@@ -111,7 +123,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --wandb_job_type $WD_J_TYPE \
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--fedprox_mu $FPROX_MU \
+>> "${LOG_DIR}/cf10-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n10ls510-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED}.log" 2>&1 &
 
 # cf10-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
@@ -142,7 +155,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --wandb_job_type $WD_J_TYPE \
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--fedprox_mu $FPROX_MU \
+>> "${LOG_DIR}/cf10-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n06las24-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED}.log" 2>&1 &
 
 # cf10-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
@@ -172,7 +186,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --wandb_job_type $WD_J_TYPE \
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--fedprox_mu $FPROX_MU \
+>> "${LOG_DIR}/cf10-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n10las24-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED}.log" 2>&1 &
 
 # cf10-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
@@ -203,7 +218,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --wandb_job_type $WD_J_TYPE \
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--fedprox_mu $FPROX_MU \
+>> "${LOG_DIR}/cf10-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n06lm24-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED}.log" 2>&1 &
 
 # cf10-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr$LR-l$EPOCHSr$COM_ROUND-bs$BSZ-sgd-r18-s$SEED
 WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/standalone/main.py \
@@ -233,4 +249,8 @@ WANDB_MODE=$WD_MODE CUDA_VISIBLE_DEVICES=0 python fednoisy/algorithms/flnl/stand
 --wandb_job_type $WD_J_TYPE \
 --use_fedprox \
 --fedprox_mu_scheduler  $FPROX_MU_SCHE \
---fedprox_mu $FPROX_MU
+--fedprox_mu $FPROX_MU \
+>> "${LOG_DIR}/cf10-${EXP_NAME}-c${N_CLIENTS}-sr${SR}-iid-n10lm24-lr${LR}-l${EPOCHS}r${COM_ROUND}-bs${BSZ}-sgd-r18-s${SEED}.log" 2>&1 &
+
+wait
+echo "All runs are done!"

@@ -2,7 +2,6 @@ from .sample_metrics import SampleMetricEvalClientHook, SampleMetricEvalServerHo
 from .label_noise_mask_loss import LabelNoiseMaskOutLoss, LabelNoiseOrcaleMaskOutLoss, LabelNoiseTruncationLoss
 from .fedprox_mu_scheduler import FedProxLocalLossMeterHook, FedProxGlobalAdaptiveMuScheduler, FedProxMuConstantScheduler
 from .pseudo_label_loss import NaivePseudoLabelLoss
-from .ref_sample_metrics import SampleMetricRefClientHook, SampleMetricRefServerHook
 from .local_epoch_scheduler import LocalEpochSchedulerConstant, LocalEpochSchedulerCosineWarmup, LocalEpochSchedulerMultiStep
 from .label_noise_rate_monitor import LabelNoiseMonitor
 from .weight_adjust import LabelNoiseWeight

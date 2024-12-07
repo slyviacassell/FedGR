@@ -93,7 +93,7 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         self.args = args
         self.wandb_logger = wandb_logger
 
-        self.cur_global_model = deepcopy(self._model)
+        self.cur_global_model = deepcopy(self.model)
 
         self.cur_payload = None  
 
@@ -157,7 +157,14 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         for hook_name, hook in self.hooks_dict.items():
             if isinstance(hook, SerialClientLocalEMAHook):
                 for m in self.local_ema_models:
-                    m.ema_model.to(self.device)
+                    pass
+                    # m.ema_model.to(self.device)
+            # tmp solution
+            elif isinstance(hook, EvaluateTrainHook):
+                if hook.log_annotation == "global":
+                    hook.model = self.cur_global_model
+                elif hook.log_annotation == "local":
+                    hook.model = self.model
     
     def state_dict(self):
         return self.__dict__
@@ -261,6 +268,7 @@ class FedAPClientTrainer(SGDSerialClientTrainer, SerialClientAlogrithmBase):
         
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
+            self.lr = self.optimizer.param_groups[0]["lr"]
 
         loss_ = AverageMeter()
         for epoch in range(self.epochs):

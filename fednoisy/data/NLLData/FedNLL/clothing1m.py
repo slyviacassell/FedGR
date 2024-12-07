@@ -96,23 +96,28 @@ class FedNLLClothing1M(NLLClothing1M, FedNLLScene):
 
         # sample class-balanced train data from overall trainset
         total_sample_num = len(self.total_train_labels)
-        sample_idxs = list(range(total_sample_num))
-        random.shuffle(sample_idxs)
-        sample_num_each_class = np.zeros(self.num_classes)
-        selected_train_data = []
-        selected_train_labels = []
-        cur_sample_num = 0
-        for idx in sample_idxs:
-            label = self.total_train_labels[idx]
-            if (
-                sample_num_each_class[label] < (self.num_samples / self.num_classes)
-                and cur_sample_num < self.num_samples
-            ):
-                img_path = self.total_train_data[idx]
-                selected_train_data.append(img_path)
-                selected_train_labels.append(label)
-                sample_num_each_class[label] += 1
-                cur_sample_num += 1
+        if self.num_samples < total_sample_num:
+            print(f"Total sample number: {total_sample_num}")
+            sample_idxs = list(range(total_sample_num))
+            random.shuffle(sample_idxs)
+            sample_num_each_class = np.zeros(self.num_classes)
+            selected_train_data = []
+            selected_train_labels = []
+            cur_sample_num = 0
+            for idx in sample_idxs:
+                label = self.total_train_labels[idx]
+                if (
+                    sample_num_each_class[label] < (self.num_samples / self.num_classes)
+                    and cur_sample_num < self.num_samples
+                ):
+                    img_path = self.total_train_data[idx]
+                    selected_train_data.append(img_path)
+                    selected_train_labels.append(label)
+                    sample_num_each_class[label] += 1
+                    cur_sample_num += 1
+        else:
+            selected_train_data = self.total_train_data
+            selected_train_labels = self.total_train_labels
 
         self.train_data = selected_train_data  # class-balanced trainset
         self.train_labels = selected_train_labels
