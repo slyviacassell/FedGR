@@ -582,9 +582,9 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
             self.lr = self.optimizer.param_groups[0]["lr"]
-            self._LOGGER.info(
-                f"Round {self.round} client-{self.g_cid} lr: {self.optimizer.param_groups[0]['lr']}"
-            )
+        self._LOGGER.info(
+            f"Round {self.round} client-{self.g_cid} lr: {self.optimizer.param_groups[0]['lr']}"
+        )
 
         tot_loss_meter = AverageMeter()
         ssl_loss_meter = AverageMeter()
