@@ -25,18 +25,21 @@ class SerialClientLocalEMAHook(SerialClientTrainerHook):
         client_trainer.model.to(client_trainer.device)
         for m in client_trainer.local_ema_models:
             m.ema_model.eval()
+
+        client_trainer.local_ema_plus_global_decay = [client_trainer.args.local_ema_plus_global_decay] * client_trainer.num_clients
     
     def on_client_training_start(self, client_trainer, *args, **kwargs):
         if client_trainer.args.local_ema_plus_global and client_trainer.args.local_ema:
             # if client_trainer.round >= client_trainer.args.sniffing_round: 
                 local_ema_model = client_trainer.local_ema_models[client_trainer.l_cid]
+                local_ema_plus_global_decay = client_trainer.local_ema_plus_global_decay[client_trainer.l_cid]
                 
                 local_ema_model.ema_model.to(client_trainer.device)
                 
                 local_ema_model.update_moving_average(
                     local_ema_model.ema_model, 
                     local_ema_model.model, # global model, use after setup global model
-                    decay=client_trainer.args.local_ema_plus_global_decay
+                    decay=local_ema_plus_global_decay
                 )
 
     def on_client_training_end(self, client_trainer, *args, **kwargs):

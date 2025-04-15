@@ -38,6 +38,10 @@ from fednoisy.algorithms.flnl.standalone.fednll import (
     FedAPNLLClientTrainer,
     FedAPNLLServerHandler,
 )
+from fednoisy.algorithms.flnl.standalone.fedgr import (
+    FedGRClientTrainer,
+    FedGRServerHandler,
+)
 
 from fednoisy.algorithms.flnl.misc import read_fednll_args
 from fednoisy.data.dataset import FedNLLDataset
@@ -82,7 +86,7 @@ else:
 
 model = build_model(args.model, CLASS_NUM[args.dataset], dataset=args.dataset)
 
-if args.use_orchestra or args.use_fednll:
+if args.use_orchestra or args.use_fednll or args.use_fedgr:
     model = build_orchestra_model(args.model, args.ssl_method, CLASS_NUM[args.dataset], dataset=args.dataset, rep_dim=args.feat_dim)
 
 # ==== prepare logger ====
@@ -117,6 +121,10 @@ elif args.use_fednll:
     handler = FedAPNLLServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
     )
+elif args.use_fedgr:
+    handler = FedGRServerHandler(
+        model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
+    )
 else:
     handler = FedAPServerHandler(
         model, args.com_round, args.sample_ratio, logger=server_logger, wandb_logger=wandb_logger, args=args
@@ -129,6 +137,10 @@ if args.use_orchestra:
     ) # client
 elif args.use_fednll:
     trainer = FedAPNLLClientTrainer(
+        model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
+    )
+elif args.use_fedgr:
+    trainer = FedGRClientTrainer(
         model, args.num_clients, cuda=True, logger=client_logger, wandb_logger=wandb_logger, args=args
     )
 else:

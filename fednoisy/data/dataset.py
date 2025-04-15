@@ -9,7 +9,8 @@ from PIL import Image
 from copy import deepcopy
 
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as transforms
 import pandas as pd
@@ -193,19 +194,6 @@ class FedNLLDataset(FedDataset):
         # kl div
         kl = (label_distri * (np.log(label_distri) - np.log(ideal_distri))).sum()
         return kl
-    
-    # def update_labels(self, p_labels: pd.DataFrame, noisy_guids: np.ndarray):
-    #     for cid,d in self.train_datasets.items():
-    #         for i, guid in enumerate(d.guids):
-    #             if guid in noisy_guids:
-    #                 d.noisy_labels[i] = p_labels.loc[guid]["freqent_pred"]
-    #         c_mask = np.array(d.legacy_noisy_labels) == np.array(d.labels)
-    #         pc_mask = np.array(d.noisy_labels) == np.array(d.labels)
-    #         print(
-    #             f"update Client-{cid} {c_mask.sum() / len(c_mask)*100:.2f}% -> {pc_mask.sum() / len(pc_mask)*100:.2f}% "
-    #             f"({pc_mask[c_mask].sum() / len(pc_mask)*100:.2f}%, {pc_mask[~c_mask].sum() / len(pc_mask)*100:.2f}%)"
-    
-    #         )
 
     def get_dividemix_dataloader(self, cid=None, train=True, batch_size=64, num_workers=4, selected_guid: np.ndarray=None, sample_prob: Dict=None, drop_last=True, persistent_workers=True, pin_memory=True):
         if train:
@@ -239,7 +227,7 @@ class FedNLLDataset(FedDataset):
             shuffle = False
 
         dataset = self.get_dataset(cid, train)
-        dataset = SemiWSFedNLLDataset(self.dataset_name, dataset, strong_aug=self.args.use_strong_aug)
+        dataset = SemiWSFedNLLDataset(self.dataset_name, dataset, strong_aug=self.args.use_strong_aug, no_weak_aug=self.args.disable_weak_aug)
         if selected_guid is not None:
             dataset.update(selected_guid, prob_dict)
 
@@ -340,15 +328,24 @@ class DivideMixFedNLLDataset(Dataset):
     
 
 class SemiWSFedNLLDataset(DivideMixFedNLLDataset):
-    def __init__(self, dataset_name:str, dataset: NoisyDataset, aug_times: int = 2, strong_aug: bool=True) -> None:
+    def __init__(self, dataset_name:str, dataset: NoisyDataset, aug_times: int = 2, strong_aug: bool=True, no_weak_aug: bool=False) -> None:
         super().__init__(dataset, aug_times)
         self.weak_transform = self.dataset.transform
-        if strong_aug:
-            self.strong_transform = TRAIN_TRANSFORM_STRONG[dataset_name]
-        else:
+        strong_transform = TRAIN_TRANSFORM_STRONG[dataset_name]
+        weak_aug = not no_weak_aug
+        assert weak_aug or strong_aug
+        if strong_aug and weak_aug:
+            self.strong_transform = strong_transform
+        elif strong_aug and not weak_aug:
+            self.strong_transform = strong_transform
+            self.weak_transform = strong_transform
+        elif not strong_aug and weak_aug:
             # self.strong_transform = TRAIN_TRANSFORM[dataset_name]
             self.strong_transform = self.dataset.transform
+        else:
+            self.strong_transform = self.dataset.transform
         self.pseudo_labels = None
+        self.test_transform = TEST_TRANSFORM[dataset_name]
 
     def __getitem__(self, index: Any) -> Any:
         if self.dataset.folder_data is False:
@@ -365,6 +362,7 @@ class SemiWSFedNLLDataset(DivideMixFedNLLDataset):
             noisy_label = self.noisy_labels[index]
             sample_weight = self.sample_weight[index]
             sample = {
+                "img": self.test_transform(img),
                 "img_w": self.weak_transform(img),
                 "img_s": self.strong_transform(img),
             }

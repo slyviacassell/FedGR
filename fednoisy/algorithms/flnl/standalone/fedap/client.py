@@ -65,7 +65,6 @@ from fednoisy.core.hooks import (
     SerialClientLocalEMAHook,
     GlobalGradNormMonitorHook,
     LocalMixupHook,
-    SerialClientLocalEMAHook,
 )
 from fednoisy.algorithms.flnl.hooks import (
     FedProxLocalLossMeterHook,

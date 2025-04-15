@@ -328,7 +328,7 @@ class SimpleSSLLoss(SerialClientTrainerHook):
     def loss(self, client_trainer, outputs, targets, *args, **kwargs):
         # ssl_loss = -torch.sum(torch.softmax(targets["simplessl_head"] / self.temperature, dim=-1) * torch.log_softmax(outputs["simplessl_head"] / self.temperature + 1e-10, dim=1), dim=1).mean()
         # ssl_loss = -torch.sum(torch.softmax(targets["simplessl_head"] / self.temperature, dim=-1) * torch.log_softmax(outputs["cls_head"]["cls_embedding"] / self.temperature + 1e-10, dim=1), dim=1).mean()
-        ssl_loss = TF.kl_div(torch.log_softmax(outputs["cls_head"]["cls_embedding"] / self.temperature, dim=1), torch.softmax(targets["simplessl_head"] / self.temperature, dim=1), reduction="batchmean")
+        ssl_loss = TF.kl_div(torch.log_softmax(outputs["cls_head"]["cls_embedding"] / self.temperature+1e-10, dim=1), torch.softmax(targets["simplessl_head"] / self.temperature, dim=1), reduction="batchmean")
         # ssl_loss = TF.mse_loss(outputs["cls_head"]["cls_embedding"], targets["simplessl_head"], reduction="mean")
         ssl2sl_reg = self.ssl2sl_rep_reg(outputs)
 

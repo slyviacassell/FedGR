@@ -111,8 +111,8 @@ class TestHook(SerialClientTrainerHook, SyncServerHook):
         with torch.no_grad():
             for batch in dataloader:
                 inputs, labels = batch["img"], batch["label"]
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+                inputs = inputs.to(device, non_blocking=True)
+                labels = labels.to(device, non_blocking=True)
                 batch_size = len(labels)
 
                 outputs = model(inputs)
@@ -154,8 +154,10 @@ class EvaluateTrainHook(SerialClientTrainerHook):
     def on_client_training_end(self, client_trainer, *args, **kwargs):
         self.reset_local_epoch_cnt()
 
-    def on_training_epoch_end(self, client_trainer, *args, **kwargs):
+    def on_training_epoch_start(self, client_trainer, *args, **kwargs):
         self.local_epoch_cnt_update()
+
+    def on_training_epoch_end(self, client_trainer, *args, **kwargs):
         if self.every_n_round(client_trainer, self.eval_interval):
             if self.eval_local_epoch is None and self.local_epoch_cnt == client_trainer.epochs:
                 return self.eval_fn(client_trainer)
@@ -226,9 +228,9 @@ class EvaluateTrainHook(SerialClientTrainerHook):
         with torch.no_grad():
             for batch in dataloader:
                 inputs, labels, noisy_labels = batch["img"], batch["label"], batch["noisy_label"]
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-                noisy_labels = noisy_labels.to(device)
+                inputs = inputs.to(device, non_blocking=True)
+                labels = labels.to(device, non_blocking=True)
+                noisy_labels = noisy_labels.to(device, non_blocking=True)
                 is_clean = labels == noisy_labels
                 batch_size = len(labels)
 

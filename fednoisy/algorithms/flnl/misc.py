@@ -75,13 +75,6 @@ def read_fednll_args():
         "--fedprox_mu", type=float, default=0.1, help="The mu for FedProx."
     )
 
-    # ----FedRobust args----
-
-    parser.add_argument(
-        "--loss", choices=['mask_out_loss', "naive_pseudo_label_loss", "truncation_loss"], help="Which loss to use for cs."
-    )
-    
-
     # ----Locla Mixup options----
     parser.add_argument(
         "--use_local_mixup", action="store_true", help="Whether to use mixup for local model training."
@@ -112,7 +105,13 @@ def read_fednll_args():
 
     # ----FedNLL options----
     parser.add_argument(
-        "--use_fednll", action="store_true", help="Whether to use Orchestra model."
+        "--use_fednll", action="store_true", help="Whether to use FedNLL model."
+    )
+    parser.add_argument(
+        "--use_fedgr", action="store_true", help="Whether to use FedGR model."
+    )
+    parser.add_argument(
+        "--use_online_ema", action="store_true", help="Whether to use online ema distillation."
     )
     parser.add_argument(
         "--warmup_round", type=int, default=0, help="The warmup round."
@@ -165,6 +164,9 @@ def read_fednll_args():
         "--use_strong_aug", action="store_true", help="Whether strong aug for dataset."
     )
     parser.add_argument(
+        "--disable_weak_aug", action="store_true", help="Whether not weak aug for dataset."
+    )
+    parser.add_argument(
         "--anchor_model", choices=['global_ema','global'], type=str, default='global', help="Which model is used for kl."
     )
     parser.add_argument(
@@ -207,6 +209,9 @@ def read_fednll_args():
     )
     parser.add_argument(
         "--sl_weight", type=float, help="The weight for supervised learning loss.", default=1.0
+    )
+    parser.add_argument(
+        "--ema_weight", type=float, help="The weight for ema distill loss.", default=1.0
     )
     parser.add_argument(
         "--ssl2sl_reg_weight", type=float, help="The weight for ssl2sl regulizer.", default=1.0
