@@ -227,7 +227,12 @@ class FedGRClientTrainer(FedAPClientTrainer):
 
         outputs_s = self.model(imgs_s, return_dict=True, full_heads=True)
         with torch.no_grad():
-            outputs_w = self.cur_global_model(imgs_w, return_dict=True, full_heads=True)
+            # outputs_w = self.cur_global_model(imgs_w, return_dict=True, full_heads=True)
+            outputs_w = {
+                "cls_head": {
+                    "cls_embedding": torch.stack([self.cid_global_reps[self.l_cid][g.item()] for g in guids], dim=0).to(self.device, non_blocking=True) # global rep
+                }
+            }
             if self.args.use_online_ema:
                 ema_outputs_w = self.local_ema_models[self.l_cid](imgs_w, return_dict=True, full_heads=True) # online ema
             else:

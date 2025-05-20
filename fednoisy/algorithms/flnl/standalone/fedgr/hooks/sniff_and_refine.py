@@ -42,11 +42,11 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
         client_trainer.cs_metrics = None
 
         self.sample_metric_container = [{} for _ in range(client_trainer.num_clients)]
-        # self.refined_targets = {cid: {} for cid in range(client_trainer.num_clients)}
         self.pse_labels = {cid: {} for cid in range(client_trainer.num_clients)}
         self.sample_probs = {}
         client_trainer.est_cid_noise = [0] * client_trainer.num_clients
         client_trainer.cid_hard_label_size = [0] * client_trainer.num_clients
+        client_trainer.cid_global_reps = [{}] * client_trainer.num_clients
 
         self.epoch_cnt = 0
 
@@ -65,8 +65,8 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
 
         self.get_est_cid_noise(client_trainer)
 
-        # if client_trainer.round >= client_trainer.args.sniffing_round:
-        self.sample_probs.update({g: c for g,c in zip(client_trainer.overall_guids.tolist(), client_trainer.overall_probs.tolist())})
+        if client_trainer.round >= client_trainer.args.sniffing_round:
+            self.sample_probs.update({g: c for g,c in zip(client_trainer.overall_guids.tolist(), client_trainer.overall_probs.tolist())})
 
     def on_local_process_end(self, client_trainer, *args, **kwargs):
         if client_trainer.round == client_trainer.args.com_round - 1 and client_trainer.args.dataset != 'clothing1m':
@@ -101,18 +101,25 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
         self.epoch_cnt = 0
 
     def on_training_epoch_start(self, client_trainer, *args, **kwargs):
-        pass
+        if self.epoch_cnt == 1: # and client_trainer.args.partition != "iid":
+            sample_outputs, _ = self.get_global_sample_outputs(client_trainer, "local")
+            sample_metrics = self.sample_statistics_processing(sample_outputs, client_trainer.l_cid, client_trainer.round)
+            client_trainer.cs_metrics = self.get_cs_metric(client_trainer, sample_metrics, *args, **kwargs)
 
     def on_training_epoch_end(self, client_trainer, *args, **kwargs):
         self.epoch_cnt += 1
     
-    def get_global_sample_outputs(self, client_trainer, metric_model: str):       
-        model = client_trainer.cur_global_model
+    def get_global_sample_outputs(self, client_trainer, metric_model: str): 
+        if metric_model == "global":      
+            model = client_trainer.cur_global_model
+        if metric_model == "local":
+            model = client_trainer.model
+        ema_model = client_trainer.local_ema_models[client_trainer.g_cid]
         bsz = 64
         eval_train_dataloader = client_trainer.dataset.get_semiws_dataloader(cid=client_trainer.g_cid, train=True, batch_size=bsz, drop_last=False) 
         device = client_trainer.device
         loss_fn = nn.CrossEntropyLoss(reduction="none")
-        sample_outputs, pse_hard_labels = self.forward_and_fixmatch(client_trainer, model, eval_train_dataloader, loss_fn, device, client_trainer.args.fixmatch_threshold)
+        sample_outputs, pse_hard_labels = self.forward_and_fixmatch(client_trainer, model, ema_model, eval_train_dataloader, loss_fn, device, client_trainer.args.fixmatch_threshold)
 
         return sample_outputs, pse_hard_labels
 
@@ -131,14 +138,17 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
 
         return [cs_metrics, guids, clean_mask]
 
-    def forward_and_fixmatch(self, client_trainer, model, dataloader, loss_fn, device, fixmatch_threshold):
+    def forward_and_fixmatch(self, client_trainer, model, ema_model, dataloader, loss_fn, device, fixmatch_threshold):
         model.eval()
+        ema_model.eval()
 
         sample_outputs = {}
 
         pse_hard_labels = {}
+        ema_soft_targets = {}
         pse_hard_meter = AverageMeter()
         ignore_index = -1
+        cid = client_trainer.g_cid
 
         with torch.no_grad():
             for batch in dataloader:
@@ -149,19 +159,25 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
                 labels = labels.to(device, non_blocking=True)
                 noisy_labels = noisy_labels.to(device, non_blocking=True)
 
-                all_outputs = model(torch.cat([img, img_w],dim=0))
-                logits, logits_w = torch.chunk(all_outputs, 2, dim=0)
+                all_outputs = model(torch.cat([img, img_w],dim=0),return_dict=True, full_heads=True)
+                all_logits = all_outputs["cls_head"]["cls_logits"]
+                all_reps = all_outputs["cls_head"]["cls_embedding"]
+                logits, logits_w = torch.chunk(all_logits, 2, dim=0)
+                reps, reps_w = torch.chunk(all_reps, 2, dim=0)
+                ema_logits = ema_model(img_w)
 
                 clean_loss = loss_fn(logits, labels)
                 noisy_loss = loss_fn(logits, noisy_labels)
 
                 max_confi_w, preds_w = torch.max(torch.softmax(logits_w,dim=-1), dim=-1)
+                ema_max_confi_w, _ = torch.max(torch.softmax(ema_logits,dim=-1), dim=-1)
                 fixmatch_mask = (max_confi_w > fixmatch_threshold)
+                # fixmatch_mask = fixmatch_mask | (ema_max_confi_w > fixmatch_threshold)
                 fixmatch_labels = torch.where(fixmatch_mask, preds_w, ignore_index)
 
                 pse_hard_meter.update(fixmatch_mask.sum().item()/len(fixmatch_mask), len(fixmatch_mask))
 
-                for guid,i_c,c_loss,n_loss,c_y,n_y,f_y in zip(
+                for guid,i_c,c_loss,n_loss,c_y,n_y,f_y,ema_logit,rep in zip(
                     guids,
                     is_clean,
                     clean_loss,
@@ -169,6 +185,8 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
                     labels,
                     noisy_labels,
                     fixmatch_labels,
+                    ema_logits,
+                    reps_w,
                 ):
                     sample_outputs[guid.item()] = {
                         "is_clean": i_c.item(),
@@ -177,11 +195,14 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
                         "label": c_y.item(),
                         "noisy_label": n_y.item(),
                     }
-                    if guid.item() not in client_trainer.overall_noisy_guids:
-                        pse_hard_labels[guid.item()] = n_y.to("cpu")
-                    else:
-                        if f_y != ignore_index:
-                            pse_hard_labels[guid.item()] = f_y.to("cpu")
+                    if self.epoch_cnt == 0:
+                        if guid.item() not in client_trainer.overall_noisy_guids and client_trainer.est_cid_noise[cid] < client_trainer.args.upper_rate_threshold:
+                            pse_hard_labels[guid.item()] = n_y.to("cpu")
+                        else:
+                            if f_y != ignore_index:
+                                pse_hard_labels[guid.item()] = f_y.to("cpu")
+                        client_trainer.cid_soft_targets[client_trainer.g_cid].update({guid.item(): ema_logit.to("cpu")})
+                        client_trainer.cid_global_reps[client_trainer.g_cid].update({guid.item(): rep.to("cpu")})
 
         client_trainer._LOGGER.info(f"Round {client_trainer.round} client-{client_trainer.l_cid} global fixmatch {fixmatch_threshold} size {pse_hard_meter.sum}/{pse_hard_meter.count}")
     
@@ -266,32 +287,22 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
             client_trainer.est_cid_noise[cid] = sum(n_mask)/len(n_mask)
 
     def loss(self, client_trainer, outputs, targets, *args, **kwargs):
-        guids = kwargs["guids"].numpy().tolist()
+        guids = kwargs["guids"]
         cid = client_trainer.g_cid
         ignore_index = -1
         if client_trainer.round < client_trainer.args.sniffing_round:
             loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"])
         else:
-            noisy_mask = torch.tensor([True if g in client_trainer.overall_noisy_guids else False for g in guids]).to(client_trainer.device, non_blocking=True)
-            pse_labels = torch.tensor([self.pse_labels[cid].get(g, ignore_index) for g in guids]).to(client_trainer.device, non_blocking=True)
+            noisy_mask = torch.tensor([True if g in client_trainer.overall_noisy_guids else False for g in guids.numpy().tolist()]).to(client_trainer.device, non_blocking=True)
+            pse_labels = torch.tensor([self.pse_labels[cid].get(g.item(), ignore_index) for g in guids]).to(client_trainer.device, non_blocking=True)
             # ema_pse_labels = torch.tensor([client_trainer.cid_ema_pse_labels[cid].get(g, ignore_index) for g in guids]).to(client_trainer.device, non_blocking=True) # ema
-            c_probs = torch.tensor([self.sample_probs[g] for g in guids]).unsqueeze(1).to(client_trainer.device, non_blocking=True)
+            c_probs = torch.tensor([self.sample_probs.get(g, 1) for g in guids.numpy().tolist()]).unsqueeze(1).to(client_trainer.device, non_blocking=True)
             client_noise_ratio = client_trainer.est_cid_noise[cid]
 
             # pse_ignore_mask = pse_labels != ignore_index
             # pse_labels = torch.where(pse_ignore_mask, pse_labels, ema_pse_labels)
 
-            if client_noise_ratio < client_trainer.args.upper_rate_threshold:
-                pse_loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], pse_labels, ignore_index=ignore_index, reduction="none")
-                noisy_loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"], ignore_index=ignore_index, reduction="none")
-
-                if not client_trainer.args.no_label_refine:
-                    loss = noisy_loss * c_probs + pse_loss * (1. - c_probs)
-                    loss = loss.mean()
-                else:
-                    loss = (noisy_loss * (~noisy_mask)).mean() # no label refine, only clean set
-            else:
-                
+            if client_noise_ratio > client_trainer.args.upper_rate_threshold:                             
                 if not client_trainer.args.no_label_refine:
                     if (pse_labels != ignore_index).sum() > 0:
                         pse_loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], pse_labels, ignore_index=ignore_index, reduction="none")
@@ -300,6 +311,15 @@ class SniffAndRefineClientHook(SerialClientTrainerHook):
                         loss = torch.tensor(0., device=client_trainer.device)
                 else:
                     noisy_loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"], ignore_index=ignore_index, reduction="none")
+                    loss = (noisy_loss * (~noisy_mask)).mean() # no label refine, only clean set
+            else:
+                pse_loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], pse_labels, ignore_index=ignore_index, reduction="none")
+                noisy_loss = TF.cross_entropy(outputs["cls_head"]["cls_logits"], targets["cls_head"], ignore_index=ignore_index, reduction="none")
+
+                if not client_trainer.args.no_label_refine:
+                    loss = noisy_loss * c_probs + pse_loss * (1. - c_probs)
+                    loss = loss.mean()
+                else:
                     loss = (noisy_loss * (~noisy_mask)).mean() # no label refine, only clean set
 
         return loss

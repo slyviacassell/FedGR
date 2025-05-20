@@ -72,7 +72,6 @@ from fednoisy.algorithms.flnl.hooks import (
     LabelNoiseMaskOutLoss,
     LabelNoiseOrcaleMaskOutLoss,
     LabelNoiseTruncationLoss,
-    LabelNoiseWeight,
     ClientLabelDistriEMA,
 )
 from fednoisy.algorithms.flnl.standalone.fednll.hooks import (
@@ -280,6 +279,7 @@ class FedAPNLLClientTrainer(FedAPClientTrainer):
                 if self.args.anchor_model == "global_ema":
                     outputs_w = self.anchor_model(imgs_w, return_dict=True, full_heads=True)
                 elif self.args.anchor_model == "global":
+                    self.cur_global_model.eval()
                     outputs_w = self.cur_global_model(imgs_w, return_dict=True, full_heads=True)
             
             # targets = {"cls_head": noisy_labels, "simplessl_head": outputs_w["simplessl_head"]}

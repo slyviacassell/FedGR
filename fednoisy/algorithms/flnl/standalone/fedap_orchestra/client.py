@@ -73,7 +73,6 @@ from fednoisy.algorithms.flnl.hooks import (
     LabelNoiseMaskOutLoss,
     LabelNoiseOrcaleMaskOutLoss,
     LabelNoiseTruncationLoss,
-    LabelNoiseWeight,
     ClientLabelDistriEMA,
 )
 from fednoisy.algorithms.flnl.standalone.fedap_orchestra.hooks import (

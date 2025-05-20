@@ -691,7 +691,7 @@ class SemiSupLoss(SerialClientTrainerHook):
         return loss
 
     def soft_loss_weight(self,client_trainer, *args, **kwargs):
-        weight = 1.0
+        weight = client_trainer.args.ema_weight
         a = client_trainer.args.soft_linear_up_round
         b = client_trainer.args.soft_silent_round
         assert a >= 0

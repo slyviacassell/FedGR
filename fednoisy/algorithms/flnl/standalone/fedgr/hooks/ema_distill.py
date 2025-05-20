@@ -23,11 +23,13 @@ class EMADistillClientHook(SerialClientLocalEMAHook):
         else:
             pse_size = client_trainer.cid_hard_label_size[cid]
             d_size = len(client_trainer.dataset.get_dataset(client_trainer.g_cid))
+            client_trainer._LOGGER.info(
+                f"noise {client_trainer.est_cid_noise[cid] > client_trainer.args.upper_rate_threshold} and "
+                f"small pse size {pse_size < client_trainer.args.pse_size_threshold * d_size}"
+            )
             if client_trainer.est_cid_noise[cid] > client_trainer.args.upper_rate_threshold and pse_size < client_trainer.args.pse_size_threshold * d_size:
                 client_trainer._LOGGER.info(
-                    f"Round {client_trainer.round} client-{cid} local ema is totoal revised due to "
-                    f"noise {client_trainer.est_cid_noise[cid] > client_trainer.args.upper_rate_threshold} and "
-                    f"small pse size {pse_size < client_trainer.args.pse_size_threshold * d_size}"
+                    f"Round {client_trainer.round} client-{cid} local ema is totoal revised"
                 )
                 local_ema_model.copy_params_from_model_to_ema()
             else:
@@ -43,10 +45,10 @@ class EMADistillClientHook(SerialClientLocalEMAHook):
                         decay=local_ema_plus_global_decay
                     )
                 
-        soft_targets, ema_pse_labels = self.get_soft_targets(client_trainer)
-        client_trainer.cid_soft_targets[cid].update(soft_targets)
-        if client_trainer.round >= client_trainer.args.sniffing_round:
-            client_trainer.cid_ema_pse_labels[cid].update(ema_pse_labels)
+        # soft_targets, ema_pse_labels = self.get_soft_targets(client_trainer)
+        # client_trainer.cid_soft_targets[cid].update(soft_targets)
+        # if client_trainer.round >= client_trainer.args.sniffing_round:
+        #     client_trainer.cid_ema_pse_labels[cid].update(ema_pse_labels)
         
     def get_soft_targets(self, client_trainer, *args, **kwargs):
         cid = client_trainer.l_cid
